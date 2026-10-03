@@ -11,6 +11,7 @@ import {
   accepts,
   atWar,
   characterDef,
+  nationTrait,
   citiesOf,
   dealBlocker,
   dealText,
@@ -244,6 +245,7 @@ export class DiplomacyWindow {
     const character = pt.character ? characterDef(pt.character) : null;
     let html = `<h2><span class="swatch" style="background:${pt.color}"></span>${esc(pt.name)}</h2>
       <div class="sub">${character ? `${esc(character.name)} — ${esc(character.description)}` : 'игрок'}</div>
+      <div class="row"><span>Черта нации</span><span title="${esc(nationTrait(state, t).description)}">${esc(nationTrait(state, t).name)}: ${esc(nationTrait(state, t).description)}</span></div>
       <div class="row"><span>Статус</span><span>${esc(statusText(state, power, t))}</span></div>`;
     if (pt.suzerain !== NONE && pt.suzerain !== power) {
       html += `<div class="row"><span>Сюзерен</span><span>${esc(state.powers[pt.suzerain].name)}</span></div>`;
@@ -284,7 +286,7 @@ export class DiplomacyWindow {
     const use = (ability: 'recon' | 'propaganda' | 'callPeace', victim = NONE) => ({ ...NO_TARGET, ability, target: t, victim });
     const row = (label: string, u: ReturnType<typeof use>, note: string) => {
       const icon = a[u.ability].path === 'science' ? '🔬' : '🎭';
-      return `<div class="deal">${this.button(`${label} (${abilityCost(state, u)} ${icon})`, { type: 'UseAbility', power, ...u })}<div class="muted small">${esc(note)}</div></div>`;
+      return `<div class="deal">${this.button(`${label} (${abilityCost(state, power, u)} ${icon})`, { type: 'UseAbility', power, ...u })}<div class="muted small">${esc(note)}</div></div>`;
     };
     let html = '<h3>Способности</h3>';
     html += row('Разведка', use('recon'), `${a.recon.turns} ходов видны все их юниты`);

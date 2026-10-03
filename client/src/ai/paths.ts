@@ -49,7 +49,7 @@ function tryUse(ctx: BotContext, ability: AbilityId, target: Partial<AbilityUse>
   const p = ctx.state.powers[ctx.power];
   const path = pathsConfig.abilities[ability].path as 'science' | 'culture';
   const have = path === 'science' ? p.science : p.culture;
-  if (have - abilityCost(ctx.state, use) < reserve(ctx, path) + extraReserve) return false;
+  if (have - abilityCost(ctx.state, ctx.power, use) < reserve(ctx, path) + extraReserve) return false;
   return exec(ctx, { type: 'UseAbility', power: ctx.power, ...use });
 }
 

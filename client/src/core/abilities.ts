@@ -7,6 +7,7 @@ import { dealBlocker, hasMet, logPublic, propose } from './diplomacy';
 import { log, removeUnit } from './entities';
 import { epochName, epochOf, LAST_EPOCH } from './epochs';
 import { neighbors } from './hex';
+import { nationTrait } from './nations';
 import { remember } from './relations';
 import { allied, atWar, cityAt, citySlots, findCity, findUnit, mapSize, unitPeople } from './state';
 import { turnsWord } from './text';
@@ -35,12 +36,14 @@ export function abilityPath(ability: AbilityId): 'science' | 'culture' {
   return abilities[ability].path as 'science' | 'culture';
 }
 
-export function abilityCost(state: GameState, use: AbilityUse): number {
+export function abilityCost(state: GameState, power: number, use: AbilityUse): number {
+  let cost: number;
   if (use.ability === 'convert') {
     const unit = findUnit(state, use.unitId);
-    return abilities.convert.costPerPerson * (unit ? unitPeople(unit) : 1);
-  }
-  return (abilities[use.ability] as { cost: number }).cost;
+    cost = abilities.convert.costPerPerson * (unit ? unitPeople(unit) : 1);
+  } else cost = (abilities[use.ability] as { cost: number }).cost;
+  const discount = abilityPath(use.ability) === 'science' ? (nationTrait(state, power).scienceAbilityDiscount ?? 0) : 0;
+  return Math.round(cost * (1 - discount));
 }
 
 function hasEffect(state: GameState, power: number, kind: 'recon' | 'propaganda' | 'holiday', target: number): boolean {
@@ -59,7 +62,7 @@ export function abilityBlocker(state: GameState, power: number, use: AbilityUse)
   const p = state.powers[power];
   const def = abilities[use.ability];
   if (!def) return 'Неизвестная способность';
-  const cost = abilityCost(state, use);
+  const cost = abilityCost(state, power, use);
   const path = abilityPath(use.ability);
   const have = path === 'science' ? p.science : p.culture;
   const need = () => `Нужно ${cost} ${path === 'science' ? 'науки' : 'культуры'}`;
@@ -154,7 +157,7 @@ export function deterrentStrike(state: GameState, aggressor: number, owner: numb
 
 export function useAbility(state: GameState, power: number, use: AbilityUse): void {
   const p = state.powers[power];
-  const cost = abilityCost(state, use);
+  const cost = abilityCost(state, power, use);
   if (abilityPath(use.ability) === 'science') p.science -= cost;
   else p.culture -= cost;
   const name = (x: number) => state.powers[x].name;

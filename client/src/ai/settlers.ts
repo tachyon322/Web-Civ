@@ -2,11 +2,11 @@
 // а лишние, когда нужна армия, сливаются в военных.
 
 import { aiConfig, balance, pathsConfig } from '../core/data';
-import { epochOf } from '../core/epochs';
 import { foundCityPrice } from '../core/economy';
 import { distance, neighbors, range } from '../core/hex';
 import { canStop } from '../core/pathfinding';
 import { isLand, mapSize, terrainMoveCost } from '../core/state';
+import { freeCities } from '../core/stability';
 import { checkClaim } from '../core/territory';
 import { NONE, S_NONE, type MilitaryType, type Unit } from '../core/types';
 import {
@@ -56,16 +56,16 @@ export function findSites(ctx: BotContext): Site[] {
   return sites.sort((a, b) => b.score - a.score || a.tile - b.tile);
 }
 
-/** Сколько жителей могут одновременно идти основывать города. */
 /** Новый город сверх бесплатных снизит стабильность — бот не опускает её ниже порога. */
 export function canExpand(ctx: BotContext): boolean {
   const { state, power } = ctx;
   const p = state.powers[power];
-  const free = pathsConfig.stability.freeCities + pathsConfig.epoch.freeCitiesPerEpoch * epochOf(p);
+  const free = freeCities(state, power);
   if (myCities(ctx).length < free) return true;
   return p.stability + pathsConfig.stability.extraCity >= aiConfig.paths.minStabilityToExpand;
 }
 
+/** Сколько жителей могут одновременно идти основывать города. */
 export function settlersAllowed(ctx: BotContext, sites: Site[]): number {
   if (!sites.length || !canExpand(ctx)) return 0;
   const price = foundCityPrice(ctx.state, ctx.power);

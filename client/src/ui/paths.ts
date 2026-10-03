@@ -12,6 +12,7 @@ import {
   epochName,
   epochOf,
   findCity,
+  nationTrait,
   nextEpochScience,
   pathsConfig,
   projectCity,
@@ -126,7 +127,9 @@ export class PathsWindow {
     const next = nextEpochScience(p);
     const cfg = pathsConfig.epoch;
     const pct = next ? Math.min(100, (p.scienceTotal / next) * 100) : 100;
-    return `<h3>Эпоха: ${esc(epochName(e))}</h3>
+    const trait = nationTrait(this.host.state, this.host.power);
+    return `<div class="row"><span>Черта нации — ${esc(trait.name)}</span><span>${esc(trait.description)}</span></div>
+      <h3>Эпоха: ${esc(epochName(e))}</h3>
       <div class="row"><span>Заработано науки</span><span>${p.scienceTotal}${next ? ` / ${next} до эпохи «${esc(epochName(e + 1))}»` : ' — последняя эпоха'}</span></div>
       <div class="bar"><div style="width:${pct}%"></div></div>
       <div class="muted small">Каждая эпоха: юнитам ×${1 + cfg.strengthPerEpoch} к силе и +${cfg.mpPerEpoch} к ходу, +${cfg.freeCitiesPerEpoch} город без штрафа к стабильности, новые здания и чудеса.
@@ -163,7 +166,7 @@ export class PathsWindow {
       const def = pathsConfig.abilities[id];
       const icon = def.path === 'science' ? '🔬' : '🎭';
       const use = { ...NO_TARGET, ability: id };
-      const cost = id === 'convert' ? `${pathsConfig.abilities.convert.costPerPerson} за человека` : String(abilityCost(state, use));
+      const cost = id === 'convert' ? `${pathsConfig.abilities.convert.costPerPerson} за человека` : String(abilityCost(state, power, use));
       let action = `<span class="muted small">${esc(WHERE[id] ?? '')}</span>`;
       if (!WHERE[id]) {
         const cmd: Command = { type: 'UseAbility', power, ...use };

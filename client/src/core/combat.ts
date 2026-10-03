@@ -7,6 +7,7 @@ import { epochName, epochOf, epochStrengthFactor, techGapBonus } from './epochs'
 import { stabilityLevel } from './stability';
 import { log, removeUnit } from './entities';
 import { distance } from './hex';
+import { nationTrait } from './nations';
 import { atWar, cityAt, isLand, mapSize, unitAt, unitMaxStrength } from './state';
 import { TERRAINS, type City, type GameState, type Unit, type UnitType } from './types';
 import { computeVisible } from './visibility';
@@ -94,13 +95,18 @@ function powerModifiers(state: GameState, owner: number, enemy: number): Modifie
   return mods;
 }
 
+/** Бонус за звезду ветерана у державы (черта нации может его менять). */
+export function starBonus(state: GameState, power: number): number {
+  return nationTrait(state, power).starBonus ?? cfg.starBonus;
+}
+
 /** Модификаторы юнита в атаке. */
 function attackModifiers(state: GameState, attacker: Unit, defender: Unit | null, defenderOwner: number): Modifier[] {
   const mods: Modifier[] = powerModifiers(state, attacker.owner, defenderOwner);
   if (defender && counters(attacker.type, defender.type)) {
     mods.push({ label: `${unitDef(attacker.type).name} против: ${unitDef(defender.type).name.toLowerCase()}`, factor: 1 + cfg.counterBonus });
   }
-  if (attacker.stars) mods.push({ label: `Звёзды ветерана ×${attacker.stars}`, factor: 1 + cfg.starBonus * attacker.stars });
+  if (attacker.stars) mods.push({ label: `Звёзды ветерана ×${attacker.stars}`, factor: 1 + starBonus(state, attacker.owner) * attacker.stars });
   if (!defender && attacker.type === 'archer') mods.push({ label: 'Лучник против города', factor: 1 + cfg.archerVsCityBonus });
   return mods;
 }
@@ -114,7 +120,7 @@ export function defenseModifiers(state: GameState, defender: Unit, attackerType:
   const terrain = terrainDefs[TERRAINS[state.map.terrain[defender.tile]]];
   if (terrain.defenseBonus) mods.push({ label: terrain.name, factor: 1 + terrain.defenseBonus });
   if (defender.fortified) mods.push({ label: 'Укрепился', factor: 1 + cfg.fortifiedBonus });
-  if (defender.stars) mods.push({ label: `Звёзды ветерана ×${defender.stars}`, factor: 1 + cfg.starBonus * defender.stars });
+  if (defender.stars) mods.push({ label: `Звёзды ветерана ×${defender.stars}`, factor: 1 + starBonus(state, defender.owner) * defender.stars });
   if (!isLand(state, defender.tile)) mods.push({ label: 'На воде', factor: cfg.onWaterDefenseMultiplier });
   return mods;
 }

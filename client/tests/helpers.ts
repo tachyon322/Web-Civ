@@ -1,4 +1,5 @@
 // Маленькая ручная карта для тестов правил: всё — равнина, без особых клеток.
+// Все державы — Греция (черта: +20% культуры); тесты черт меняют нацию явно через setNation.
 
 import { blankPower, createCity, createUnit } from '../src/core/entities';
 import { startWar } from '../src/core/relations';
@@ -14,7 +15,7 @@ export function blankState(width = 12, height = 10, powers = 2): GameState {
     map: { width, height, terrain: new Array(n).fill(T_PLAINS), special: new Array(n).fill(0), starts: [] },
     territory: { owner: new Array(n).fill(NONE), city: new Array(n).fill(NONE) },
     powers: Array.from({ length: powers }, (_, id) => ({
-      ...blankPower(id, id === 0 ? 'russia' : 'greece', id === 0, id === 0 ? null : 'aggressor', n, 1000),
+      ...blankPower(id, 'greece', id === 0, id === 0 ? null : 'aggressor', n, 1000),
       name: `P${id}`,
       color: '#ffffff',
     })),
@@ -27,6 +28,11 @@ export function blankState(width = 12, height = 10, powers = 2): GameState {
     nextId: 1,
     log: [],
   };
+}
+
+/** Сменить нацию державы (для тестов черт). */
+export function setNation(state: GameState, power: number, nationId: string): void {
+  state.powers[power].nationId = nationId;
 }
 
 export const at = (state: GameState, col: number, row: number) => row * state.map.width + col;

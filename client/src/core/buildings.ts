@@ -3,6 +3,7 @@
 
 import { buildingDef, buildings, pathsConfig, type BuildingDef } from './data';
 import { epochName, epochOf } from './epochs';
+import { nationTrait } from './nations';
 import { citiesOf, cityTiles, citySlots } from './state';
 import { S_MARBLE, type City, type GameState } from './types';
 
@@ -36,6 +37,7 @@ export function buildingPrice(state: GameState, power: number, buildingId: strin
   const owned = citiesOf(state, power).filter((c) => c.buildings.includes(buildingId)).length;
   let price = def.basePrice + def.priceStep * owned;
   if (def.wonder && city && cityHasMarble(state, city)) price = Math.round(price * (1 - pathsConfig.culture.wonderMarbleDiscount));
+  if (def.wonder) price = Math.round(price * (1 - (nationTrait(state, power).wonderDiscount ?? 0)));
   return price;
 }
 

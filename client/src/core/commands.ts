@@ -35,6 +35,7 @@ import { advanceTurn } from './turn';
 import { abilityBlocker, useAbility, type AbilityUse } from './abilities';
 import { addBuilding, buildingBlocker } from './buildings';
 import { epochMpBonus } from './epochs';
+import { nationTrait, unitTypeMp } from './nations';
 import { refreshAllStability, refreshStability } from './stability';
 import { MILITARY_TYPES, NONE, type Deal, type GameState, type MilitaryType, type ProjectKind, type Unit } from './types';
 import { buyProjectStage, checkVictory, projectBlocker } from './victory';
@@ -284,7 +285,7 @@ export function apply(state: GameState, cmd: Command): void {
       const city = findCity(state, cmd.cityId)!;
       power.gold -= citizenPrice(state, cmd.power);
       city.purchasedThisTurn = true;
-      const mp = balance.units.boughtUnitsCanMove ? balance.units.citizen.mp + epochMpBonus(state, cmd.power) : 0;
+      const mp = balance.units.boughtUnitsCanMove ? unitTypeMp(state, cmd.power, 'citizen') + epochMpBonus(state, cmd.power) : 0;
       createUnit(state, cmd.power, 'citizen', spawnTile(state, city)!, mp);
       break;
     }
@@ -304,7 +305,7 @@ export function apply(state: GameState, cmd: Command): void {
       const city = findCity(state, cmd.cityId)!;
       power.gold -= militaryPrice(state, cmd.power);
       city.purchasedThisTurn = true;
-      const mp = balance.units.boughtUnitsCanMove ? unitDef(cmd.unitType).mp + epochMpBonus(state, cmd.power) : 0;
+      const mp = balance.units.boughtUnitsCanMove ? unitTypeMp(state, cmd.power, cmd.unitType) + epochMpBonus(state, cmd.power) : 0;
       createUnit(state, cmd.power, cmd.unitType, spawnTile(state, city)!, mp, balance.units.barracksLevel);
       log(state, cmd.power, `${city.name}: куплен ${unitDef(cmd.unitType).name.toLowerCase()}`);
       break;
@@ -317,7 +318,7 @@ export function apply(state: GameState, cmd: Command): void {
       target.level += 1;
       target.type = cmd.into;
       target.strength = Math.round((unit.strength + target.strength) * 100) / 100;
-      target.stars = Math.max(unit.stars, target.stars);
+      target.stars = Math.min(balance.combat.maxStars, Math.max(unit.stars, target.stars) + (nationTrait(state, target.owner).mergeStar ?? 0));
       target.mp = Math.min(unit.mp, target.mp);
       target.moved = true;
       target.fortified = false;

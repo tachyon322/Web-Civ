@@ -9,6 +9,7 @@ import type { Breakdown } from './economy';
 import { blankPower, log } from './entities';
 import { epochOf } from './epochs';
 import { distance } from './hex';
+import { nationTrait } from './nations';
 import { computeNetwork } from './network';
 import { remember, warTurns } from './relations';
 import { citiesOf, findCity, findPact, mapSize } from './state';
@@ -58,6 +59,12 @@ export function disconnectedCities(state: GameState, power: number): City[] {
   return citiesOf(state, power).filter((c) => c.id !== capital.id && (label[c.tile] === NONE || label[c.tile] !== label[capital.tile]));
 }
 
+/** Сколько городов держава держит без штрафа к стабильности: база, эпоха, черта нации. */
+export function freeCities(state: GameState, power: number): number {
+  const p = state.powers[power];
+  return cfg.freeCities + pathsConfig.epoch.freeCitiesPerEpoch * epochOf(p) + (nationTrait(state, power).freeCities ?? 0);
+}
+
 /** Стабильность с разбивкой: что поднимает и что снижает. */
 export function computeStability(state: GameState, power: number): Breakdown {
   const p = state.powers[power];
@@ -82,7 +89,7 @@ export function computeStability(state: GameState, power: number): Breakdown {
   const holiday = p.effects.some((e) => e.kind === 'holiday' && e.until > state.turn);
   if (holiday) add(b, 'Праздник', pathsConfig.abilities.holiday.stability);
 
-  const free = cfg.freeCities + pathsConfig.epoch.freeCitiesPerEpoch * epochOf(p);
+  const free = freeCities(state, power);
   const extra = Math.max(0, cities.length - free);
   add(b, `Города сверх ${free}`, extra * cfg.extraCity);
   add(b, 'Города без связи со столицей', disconnectedCities(state, power).length * cfg.disconnected);

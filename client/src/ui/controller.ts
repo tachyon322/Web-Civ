@@ -784,12 +784,12 @@ export class GameController {
     if (!own) {
       if (unit.type !== 'citizen' && atWar(state, this.power, unit.owner)) {
         const use = { ...NO_TARGET, ability: 'convert' as const, unitId: unit.id };
-        html += `<div class="actions">${this.cmdButton('Переманить на свою сторону', `${abilityCost(state, use)} 🎭`, { type: 'UseAbility', power: this.power, ...use })}</div>`;
+        html += `<div class="actions">${this.cmdButton('Переманить на свою сторону', `${abilityCost(state, this.power, use)} 🎭`, { type: 'UseAbility', power: this.power, ...use })}</div>`;
       }
       return html + this.relationBlock(unit.owner);
     }
 
-    html += `<div class="row"><span>Очки хода</span><span title="Базово ${unitBaseMp(unit)}, +${epochMpBonus(state, unit.owner)} от эпохи, +${balance.units.ownTerritoryMpBonus} если ход начат на своей земле">${unit.mp}</span></div>`;
+    html += `<div class="row"><span>Очки хода</span><span title="Базово ${unitBaseMp(state, unit)}, +${epochMpBonus(state, unit.owner)} от эпохи, +${balance.units.ownTerritoryMpBonus} если ход начат на своей земле">${unit.mp}</span></div>`;
     if (unit.routeTarget !== NONE) html += `<div class="row"><span>Маршрут</span><span>идёт к цели</span></div>`;
     html += `<h3>Действия</h3><div class="actions">`;
     if (unit.type === 'citizen') {
@@ -855,7 +855,7 @@ export class GameController {
       html += `<div class="row"><span>Рост</span><span>максимальный уровень</span></div>`;
     }
     const tiles = cityTiles(state, city.id).length;
-    html += `<div class="row"><span>Клетки</span><span>${tiles} / ${cityTileLimit(city)}</span></div>
+    html += `<div class="row"><span>Клетки</span><span>${tiles} / ${cityTileLimit(state, city)}</span></div>
       <div class="row"><span>Слоты зданий</span><span>${city.buildings.length} / ${citySlots(city)}</span></div>`;
     const inc = this.cityIncome(city);
     html += `<div class="row"><span>Даёт за ход</span><span>🪙 ${inc.gold} · 🔬 ${inc.science} · 🎭 ${inc.culture}</span></div>`;
@@ -916,7 +916,7 @@ export class GameController {
       const use = { ...NO_TARGET, ability: 'fortify' as const, cityId: city.id };
       html += `<h3>Способности</h3><div class="actions">${this.cmdButton(
         `Фортификация: город втрое крепче на ${pathsConfig.abilities.fortify.turns} хода`,
-        `${abilityCost(state, use)} 🔬`,
+        `${abilityCost(state, this.power, use)} 🔬`,
         { type: 'UseAbility', power: this.power, ...use },
       )}</div>`;
     }
@@ -942,7 +942,7 @@ export class GameController {
     }
     if (city.pressureFrom !== NONE && city.pressure > 0) {
       const src = pressureSource(state, city);
-      const gain = src && src.power === city.pressureFrom ? ` (+${pressureGain(src.ratio)} за ход)` : ' (ослабевает)';
+      const gain = src && src.power === city.pressureFrom ? ` (+${pressureGain(state, src.power, src.ratio)} за ход)` : ' (ослабевает)';
       html += `<div class="row" title="Сосед с намного более сильной культурой постепенно склоняет приграничный город к себе"><span>Культурное давление</span><span>${esc(name(city.pressureFrom))}: ${city.pressure} / ${cfg.pressureThreshold}${gain}</span></div>`;
     }
     if (city.project) {
@@ -979,7 +979,7 @@ export class GameController {
     let html = '';
     for (const b of city.buildings) {
       const use = { ...NO_TARGET, ability: 'sabotage' as const, cityId: city.id, building: b };
-      html += this.cmdButton(`Саботаж: «${buildingDef(b).name}»`, `${abilityCost(state, use)} 🔬`, { type: 'UseAbility', power: this.power, ...use }, false);
+      html += this.cmdButton(`Саботаж: «${buildingDef(b).name}»`, `${abilityCost(state, this.power, use)} 🔬`, { type: 'UseAbility', power: this.power, ...use }, false);
     }
     return `<h3>Саботаж (${pathsConfig.abilities.sabotage.turns} ходов)</h3><div class="actions">${html}</div>`;
   }

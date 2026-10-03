@@ -12,6 +12,7 @@ import { cityGrowthPerTurn, computeIncome } from './economy';
 import { log, removeUnit } from './entities';
 import { neighbors } from './hex';
 import { moveTowards } from './movement';
+import { nationTrait } from './nations';
 import {
   atWar,
   cityAt,
@@ -109,14 +110,20 @@ function upkeepUnits(state: GameState): void {
     if (attrition && state.powers[unit.owner].gold < 0) {
       unit.strength = roundStrength(unit.strength - max * balance.upkeep.debtLossShare);
     }
+    // Черта нации: вражеские военные на её земле теряют силу.
+    const land = owner[unit.tile];
+    const hostile = attrition && land !== NONE && land !== unit.owner && atWar(state, unit.owner, land);
+    const landLoss = hostile ? (nationTrait(state, land).enemyAttrition ?? 0) : 0;
+    if (landLoss) unit.strength = roundStrength(unit.strength - max * landLoss);
     if (unit.strength <= 0) {
       removeUnit(state, unit.id);
-      log(state, unit.owner, `${unitDef(unit.type).name} погиб: ${onOwnLand ? 'дезертирство из-за долгов' : 'нет снабжения'}`);
+      const reason = landLoss ? `${nationTrait(state, land).name.toLowerCase()} врага` : onOwnLand ? 'дезертирство из-за долгов' : 'нет снабжения';
+      log(state, unit.owner, `${unitDef(unit.type).name} погиб: ${reason}`);
       continue;
     }
     unit.fortified = !unit.moved;
     unit.moved = false;
-    unit.mp = unitBaseMp(unit) + epochMpBonus(state, unit.owner) + (onOwnLand ? balance.units.ownTerritoryMpBonus : 0);
+    unit.mp = unitBaseMp(state, unit) + epochMpBonus(state, unit.owner) + (onOwnLand ? balance.units.ownTerritoryMpBonus : 0);
   }
 }
 

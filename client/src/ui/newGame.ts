@@ -1,6 +1,6 @@
 // Экран новой партии: нация, число держав, сложность, сид карты.
 
-import { DIFFICULTIES, MAX_POWERS, balance, nations, type Difficulty, type GameSettings } from '../core';
+import { DIFFICULTIES, MAX_POWERS, balance, characterDef, nations, traitDef, type Difficulty, type GameSettings } from '../core';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000);
@@ -20,6 +20,7 @@ export function showNewGameDialog(onStart: (settings: GameSettings) => void, can
       <h1>Новая партия</h1>
       <label for="ng-nation">Нация</label>
       <select id="ng-nation"><option value="">Случайная</option>${nationOptions}</select>
+      <div class="hint" id="ng-trait"></div>
       <label for="ng-powers">Число держав</label>
       <input id="ng-powers" type="number" min="2" max="${MAX_POWERS}" value="${MAX_POWERS}" />
       <label for="ng-difficulty">Сложность</label>
@@ -36,6 +37,15 @@ export function showNewGameDialog(onStart: (settings: GameSettings) => void, can
     </div>`;
   document.body.appendChild(backdrop);
   const $ = <T extends HTMLElement>(id: string) => backdrop.querySelector<T>(`#${id}`)!;
+  const showTrait = () => {
+    const id = $<HTMLSelectElement>('ng-nation').value;
+    const n = nations.find((x) => x.id === id);
+    $('ng-trait').textContent = n
+      ? `${traitDef(n.trait).name}: ${traitDef(n.trait).description}. Боты этой нации чаще — ${characterDef(n.tendency).name.toLowerCase()}.`
+      : `Случайная из ${nations.length}. У каждой нации одна черта — её видно и у соперников в окне дипломатии.`;
+  };
+  $('ng-nation').addEventListener('change', showTrait);
+  showTrait();
   $('ng-reroll').addEventListener('click', () => {
     $<HTMLInputElement>('ng-seed').value = String(randomSeed());
   });

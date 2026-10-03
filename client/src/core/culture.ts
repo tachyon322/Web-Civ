@@ -7,6 +7,7 @@ import { cedeCity, logPublic } from './diplomacy';
 import { computeIncome } from './economy';
 import { createUnit, log } from './entities';
 import { distance } from './hex';
+import { nationTrait } from './nations';
 import { remember } from './relations';
 import { isMilitary, mapSize, unitAt } from './state';
 import { NONE, type City, type GameState } from './types';
@@ -73,9 +74,10 @@ export function pressureSource(state: GameState, city: City): { power: number; r
   return best;
 }
 
-/** Прирост давления за ход. */
-export function pressureGain(ratio: number): number {
-  return Math.min(cfg.pressureMax, Math.round(cfg.pressurePerRatio * (ratio - 1) * 10) / 10);
+/** Прирост давления державы за ход (черта нации может его ускорять). */
+export function pressureGain(state: GameState, power: number, ratio: number): number {
+  const factor = nationTrait(state, power).pressureFactor ?? 1;
+  return Math.round(Math.min(cfg.pressureMax, cfg.pressurePerRatio * (ratio - 1)) * factor * 10) / 10;
 }
 
 function pressure(state: GameState): void {
@@ -90,7 +92,7 @@ function pressure(state: GameState): void {
       city.pressureFrom = src.power;
       city.pressure = 0;
     }
-    city.pressure = Math.round((city.pressure + pressureGain(src.ratio)) * 10) / 10;
+    city.pressure = Math.round((city.pressure + pressureGain(state, src.power, src.ratio)) * 10) / 10;
     if (city.pressure < cfg.pressureThreshold) continue;
     const from = city.owner;
     city.pressure = 0;

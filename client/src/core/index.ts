@@ -21,6 +21,7 @@ export * from './culture';
 export * from './abilities';
 export * from './victory';
 export * from './deterrence';
+export * from './nations';
 export { newGame, MAX_POWERS, type NewGameSettings } from './game';
 export {
   aiConfig,
@@ -31,7 +32,11 @@ export {
   diplomacyTraits,
   pathsConfig,
   nations,
+  nationDef,
   terrainDefs,
+  traits,
+  traitDef,
   type AbilityId,
   type BuildingDef,
+  type TraitDef,
 } from './data';

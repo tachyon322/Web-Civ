@@ -2,6 +2,7 @@
 
 import { activeBuildings, buildingPrice } from './buildings';
 import { balance, buildingDef, buildings, diplomacyConfig, pathsConfig, specialYields } from './data';
+import { nationTrait } from './nations';
 import { borderTiles } from './relations';
 import { stabilityLevel } from './stability';
 import { citiesOf, isLand, unitPeople, unitsOf, vassalsOf } from './state';
@@ -56,6 +57,10 @@ function production(state: GameState, power: number): Income {
     const y = specialYields[special];
     for (const res of RESOURCES) add(income[res], specialNames[special], y[res] ?? 0);
   }
+  // Черта нации: доля к производству науки или культуры.
+  const trait = nationTrait(state, power);
+  if (trait.science) add(income.science, trait.name, Math.round(income.science.total * trait.science));
+  if (trait.culture) add(income.culture, trait.name, Math.round(income.culture.total * trait.culture));
   // Сложность меняет только доход ботов: процент от прихода до вычета содержания.
   const p = state.powers[power];
   const bonus = p.isHuman ? 0 : balance.difficulty[state.settings.difficulty].botIncomeBonus;
@@ -114,7 +119,7 @@ export function tradeGold(state: GameState, power: number): number {
     const partner = p.a === power ? p.b : p.a;
     sum += cfg.goldBase + (borderTiles(state, power, partner) > 0 ? cfg.goldBorder : 0);
   }
-  return sum;
+  return sum * (nationTrait(state, power).tradeFactor ?? 1);
 }
 
 /** Дань вассала сюзерену: доля его золотого дохода, если он положительный. */
@@ -143,7 +148,7 @@ export function cityGrowthPerTurn(state: GameState, city: City): number {
   const { city: cityOf } = state.territory;
   let tiles = 0;
   for (let t = 0; t < cityOf.length; t++) if (cityOf[t] === city.id && isLand(state, t)) tiles++;
-  return tiles * balance.city.growthPerLandTile;
+  return Math.round(tiles * balance.city.growthPerLandTile * (nationTrait(state, city.owner).growthFactor ?? 1));
 }
 
 export function citizenPrice(_state: GameState, _power: number): number {

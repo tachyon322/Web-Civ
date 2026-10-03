@@ -2,6 +2,7 @@
 
 import { balance, buildingDef, terrainDefs, unitDef } from './data';
 import { neighbors, type MapSize } from './hex';
+import { nationTrait, unitTypeMp } from './nations';
 import { NONE, TERRAINS, type City, type GameState, type Pact, type PactKind, type Power, type Unit } from './types';
 
 export function mapSize(state: GameState): MapSize {
@@ -64,8 +65,8 @@ export function cityTileCountAll(state: GameState): Map<number, number> {
   return counts;
 }
 
-export function cityTileLimit(city: City): number {
-  return balance.city.tileLimit[city.level - 1];
+export function cityTileLimit(state: GameState, city: City): number {
+  return balance.city.tileLimit[city.level - 1] + (nationTrait(state, city.owner).tileLimit ?? 0);
 }
 
 export function citySlots(city: City): number {
@@ -87,8 +88,8 @@ export function unitMaxStrength(unit: Unit): number {
   return unitPeople(unit);
 }
 
-export function unitBaseMp(unit: Unit): number {
-  return unitDef(unit.type).mp;
+export function unitBaseMp(state: GameState, unit: Unit): number {
+  return unitTypeMp(state, unit.owner, unit.type);
 }
 
 export function isMilitary(unit: Unit): boolean {

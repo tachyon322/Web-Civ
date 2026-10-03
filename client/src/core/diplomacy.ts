@@ -7,6 +7,7 @@ import { characterDef, diplomacyConfig, diplomacyTraits, pathsConfig } from './d
 import { computeIncome, grossGold, type Breakdown } from './economy';
 import { log } from './entities';
 import { range } from './hex';
+import { nationTrait } from './nations';
 import { canStop } from './pathfinding';
 import {
   addPact,
@@ -252,9 +253,17 @@ export function giftForecast(state: GameState, from: number, to: number, amount:
     v *= g.fromWeakFactor;
     notes.push(`подарок от слабого считают слабостью ×${fmt(g.fromWeakFactor)}`);
   }
-  if (v > g.max) {
-    v = g.max;
-    notes.push(`не больше +${g.max} за раз`);
+  // Черта нации дарителя усиливает подарок вместе с потолком.
+  const trait = nationTrait(state, from);
+  const nf = trait.giftFactor ?? 1;
+  if (nf !== 1) {
+    v *= nf;
+    notes.push(`${trait.name} ×${fmt(nf)}`);
+  }
+  const max = g.max * nf;
+  if (v > max) {
+    v = max;
+    notes.push(`не больше +${max} за раз`);
   }
   const kind = resource === 'gold' ? 'gift' : 'culture';
   const recent = state.powers[to].memories.filter(
