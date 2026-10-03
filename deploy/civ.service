@@ -1,0 +1,31 @@
+# systemd: /etc/systemd/system/civ.service
+[Unit]
+Description=Web-Civ game server
+After=network.target
+
+[Service]
+User=civ
+Group=civ
+WorkingDirectory=/var/lib/civ
+# Настройки и секреты: CIV_IP_SECRET, CIV_ADMIN_PASSWORD и др. (см. deploy/civ.env.example).
+EnvironmentFile=/etc/civ/civ.env
+ExecStart=/opt/civ/civ-server
+Restart=always
+RestartSec=2
+
+# Песочница: писать можно только в каталог с базой.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/var/lib/civ
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryMax=300M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Статистика</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 16px; background: #0b1020; color: #e8ecf4; font: 14px/1.45 system-ui, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 24px 0 8px; }
+  .muted { color: #9aa6bd; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 16px; }
+  .card { background: #151d33; border: 1px solid #ffffff1f; border-radius: 8px; padding: 10px 12px; }
+  .card b { display: block; font-size: 22px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ffffff14; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .bar { height: 8px; background: #f5c542; border-radius: 4px; min-width: 2px; }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Статистика</h1>
+  <div class="muted">на {{.Generated}}</div>
+
+  <div class="cards">
+    <div class="card">Игроков<b>{{.Players}}</b></div>
+    <div class="card">Входов<b>{{.Visits}}</b></div>
+    <div class="card">Начато партий<b>{{.Started}}</b></div>
+    <div class="card">Доиграно<b>{{.Finished}}</b><span class="muted">{{pct .Finished .Started}}% от начатых</span></div>
+    <div class="card">Брошено<b>{{.Abandoned}}</b><span class="muted">в среднем на ходу {{printf "%.0f" .AvgAbandon}}</span></div>
+    <div class="card">Побед игроков<b>{{.Wins}}</b><span class="muted">партия в среднем {{printf "%.0f" .AvgTurns}} ходов</span></div>
+  </div>
+
+  <h2>По дням (UTC, последние 30)</h2>
+  <div class="scroll">
+  <table>
+    <tr><th>День</th><th class="n">Новые игроки</th><th class="n">Активные игроки</th><th class="n">Уникальные подключения</th><th class="n">Начато партий</th></tr>
+    {{range .Days}}<tr><td>{{.Day}}</td><td class="n">{{.New}}</td><td class="n">{{.Active}}</td><td class="n">{{.Unique}}</td><td class="n">{{.Started}}</td></tr>
+    {{end}}
+  </table>
+  </div>
+
+  <div class="grid">
+    <section>
+      <h2>Итоги партий</h2>
+      <table>{{range .Victories}}<tr><td>{{.Name}}</td><td class="n">{{.Count}}</td></tr>{{else}}<tr><td class="muted">пока нет</td></tr>{{end}}</table>
+    </section>
+    <section>
+      <h2>Нации игроков</h2>
+      <table>{{range .Nations}}<tr><td>{{.Name}}</td><td class="n">{{.Count}}</td></tr>{{else}}<tr><td class="muted">пока нет</td></tr>{{end}}</table>
+    </section>
+    <section>
+      <h2>Сложность</h2>
+      <table>{{range .Difficulty}}<tr><td>{{.Name}}</td><td class="n">{{.Count}}</td></tr>{{else}}<tr><td class="muted">пока нет</td></tr>{{end}}</table>
+    </section>
+    <section>
+      <h2>Страны (игроков)</h2>
+      <table>{{range .Countries}}<tr><td>{{.Name}}</td><td class="n">{{.Count}}</td></tr>{{else}}<tr><td class="muted">пока нет</td></tr>{{end}}</table>
+    </section>
+    <section>
+      <h2>Логин из нескольких браузеров</h2>
+      <div class="muted">возможно, двое ввели одно имя</div>
+      <table>{{range .Shared}}<tr><td>{{.Name}}</td><td class="n">{{.Count}} браузера</td></tr>{{else}}<tr><td class="muted">нет</td></tr>{{end}}</table>
+    </section>
+  </div>
+</main>
+</body>
+</html>
