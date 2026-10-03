@@ -11,6 +11,8 @@ export const palette = {
   mountain: 0x8c8378,
   mountainShade: 0x6a6259,
   snow: 0xf2f2f2,
+  cliff: 0x6b5638,
+  wall: 0xb9b2a6,
   gridLine: 0x000000,
   unexplored: 0x0b1020,
   fogAlpha: 0.45,
@@ -29,4 +31,10 @@ export const palette = {
 
 export function hexColor(css: string): number {
   return parseInt(css.replace('#', ''), 16);
+}
+
+/** Тот же цвет темнее (factor < 1) или светлее (factor > 1). */
+export function darken(color: number, factor: number): number {
+  const ch = (shift: number) => Math.max(0, Math.min(255, Math.round(((color >> shift) & 0xff) * factor)));
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
 }

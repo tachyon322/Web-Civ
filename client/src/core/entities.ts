@@ -8,6 +8,9 @@ import { assignFoundingTiles } from './territory';
 import { NONE, type Character, type City, type GameState, type Power, type Unit, type UnitType } from './types';
 import { reveal } from './visibility';
 
+/** Сколько записей журнала хранится в партии (старые отбрасываются в конце хода). */
+export const LOG_LIMIT = 2000;
+
 export function log(state: GameState, power: number, text: string): void {
   state.log.push({ turn: state.turn, power, text });
 }

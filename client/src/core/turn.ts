@@ -9,7 +9,7 @@ import { epochMpBonus, epochName, epochOf } from './epochs';
 import { processSecession, refreshAllStability } from './stability';
 import { checkVictory } from './victory';
 import { cityGrowthPerTurn, computeIncome } from './economy';
-import { log, removeUnit } from './entities';
+import { LOG_LIMIT, log, removeUnit } from './entities';
 import { neighbors } from './hex';
 import { moveTowards } from './movement';
 import { nationTrait } from './nations';
@@ -157,4 +157,5 @@ export function advanceTurn(state: GameState): void {
     updateContacts(state, power.id);
   }
   checkVictory(state);
+  if (state.log.length > LOG_LIMIT) state.log.splice(0, state.log.length - LOG_LIMIT);
 }

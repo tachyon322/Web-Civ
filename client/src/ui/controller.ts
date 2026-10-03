@@ -162,9 +162,15 @@ export class GameController {
   private paths: PathsWindow;
   /** Команды кнопок панели текущей отрисовки (data-action="cmd", data-i — индекс). */
   private panelCommands: Command[] = [];
-  /** Окно итогов уже показано. */
-  private victoryShown = false;
+  /** Итог партии уже показан (победа или выбывание игрока). */
+  private overShown = false;
   onNewGame: (() => void) | null = null;
+  /** Кнопка «Меню» в верхней полосе. */
+  onMenu: (() => void) | null = null;
+  /** Ход завершён (для автосохранения). */
+  onTurnEnd: ((state: GameState) => void) | null = null;
+  /** Партия закончилась для игрока: победа (своя или чужая) или выбывание. */
+  onGameOver: ((state: GameState) => void) | null = null;
 
   constructor(
     private renderer: MapRenderer,
@@ -200,7 +206,7 @@ export class GameController {
     ui.panel.addEventListener('click', (e) => this.onPanelClick(e));
     ui.topbar.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      if (target.closest('[data-action="new-game"]')) this.onNewGame?.();
+      if (target.closest('[data-action="menu"]')) this.onMenu?.();
       if (target.closest('[data-action="diplomacy"]')) this.diplomacy.open();
       if (target.closest('[data-action="paths"]')) this.paths.open();
     });
@@ -208,8 +214,8 @@ export class GameController {
     renderer.onViewChange = () => minimap.drawView();
   }
 
-  get current(): GameState {
-    return this.state;
+  get current(): GameState | null {
+    return this.state ?? null;
   }
 
   get power(): number {
@@ -219,7 +225,7 @@ export class GameController {
   start(state: GameState): void {
     this.diplomacy.close();
     this.paths.close();
-    this.victoryShown = false;
+    this.overShown = !!state.winner || !state.powers[state.humanPower].alive;
     this.state = state;
     this.selection = null;
     document.body.classList.remove('no-game');
@@ -249,8 +255,9 @@ export class GameController {
   /** Итог партии: победа (своя или чужая) — один раз. */
   private checkGameOver(): void {
     const w = this.state.winner;
-    if (!w || this.victoryShown) return;
-    this.victoryShown = true;
+    if (!w || this.overShown) return;
+    this.overShown = true;
+    this.onGameOver?.(this.state);
     const name = this.state.powers[w.power].name;
     const mine = w.power === this.power;
     showChoice(
@@ -287,6 +294,7 @@ export class GameController {
     this.refresh();
     const declared = state.powers[this.power].wars.filter((w) => !warsBefore.includes(w)).map((w) => state.powers[w].name);
     if (declared.length) this.toast(`Новая война: ${declared.join(', ')} — подробности в журнале`);
+    this.onTurnEnd?.(state);
     if (state.winner) this.checkGameOver();
     else if (!state.powers[this.power].alive) this.showDefeat();
     else {
@@ -304,6 +312,9 @@ export class GameController {
   }
 
   private showDefeat(): void {
+    if (this.overShown) return;
+    this.overShown = true;
+    this.onGameOver?.(this.state);
     showChoice(
       'Ваша держава выбыла',
       `Все города потеряны на ходу ${this.state.turn}. Можно посмотреть на карту или начать заново.`,
@@ -328,6 +339,7 @@ export class GameController {
   // ---------- Ввод ----------
 
   onTileClick(tile: number, button: 'left' | 'right'): void {
+    if (!this.state) return;
     if (button === 'right') {
       this.onRightClick(tile);
       return;
@@ -382,13 +394,14 @@ export class GameController {
   }
 
   onTileHover(tile: number): void {
+    if (!this.state) return;
     this.hover = tile;
     this.updateOverlay();
     this.renderTileInfo();
   }
 
   private onKey(e: KeyboardEvent): void {
-    if (document.querySelector('.modal-backdrop')) return;
+    if (!this.state || document.querySelector('.modal-backdrop')) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -704,7 +717,7 @@ export class GameController {
       <button data-action="paths" title="Эпоха, стабильность, способности, проекты и победы (P)">✨ Пути</button>
       <button data-action="diplomacy" title="Отношения, договоры, мир и войны (D)">🤝 Дипломатия${pending ? ` · 📜 ${pending}` : ''}</button>
       <span class="turn">Ход ${state.turn} · сид ${state.settings.seed}</span>
-      <button data-action="new-game">Новая игра</button>`;
+      <button data-action="menu" title="Сохранить, загрузить, настройки, новая партия">☰ Меню</button>`;
   }
 
   private renderLog(): void {
@@ -1013,6 +1026,11 @@ export class GameController {
     }
     if (!this.visible[t]) parts.push('вне обзора');
     this.ui.tileinfo.textContent = parts.join(' · ');
+  }
+
+  /** Короткое сообщение поверх карты. */
+  notify(text: string): void {
+    this.toast(text);
   }
 
   private toast(text: string): void {

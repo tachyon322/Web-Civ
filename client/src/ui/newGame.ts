@@ -6,7 +6,7 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000);
 }
 
-export function showNewGameDialog(onStart: (settings: GameSettings) => void, canCancel: boolean): void {
+export function showNewGameDialog(onStart: (settings: GameSettings) => void, onCancel: () => void): void {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   const nationOptions = nations.map((n) => `<option value="${n.id}">${n.name}</option>`).join('');
@@ -31,7 +31,7 @@ export function showNewGameDialog(onStart: (settings: GameSettings) => void, can
         <button id="ng-reroll" title="Случайный сид">⟳</button>
       </div>
       <button class="start" id="ng-start">Начать</button>
-      ${canCancel ? '<button class="start" id="ng-cancel" style="background:var(--btn)">Отмена</button>' : ''}
+      <button class="start secondary" id="ng-cancel">Назад</button>
       <div class="hint">ЛКМ — выбрать, ПКМ — идти или перебросить, колесо — масштаб, перетаскивание — сдвиг карты.
       Enter — завершить ход, F — основать город, N — следующий юнит, D — дипломатия, P — пути (эпоха, стабильность, способности, победы), Esc — снять выбор.</div>
     </div>`;
@@ -57,5 +57,8 @@ export function showNewGameDialog(onStart: (settings: GameSettings) => void, can
     backdrop.remove();
     onStart({ seed, powers, humanNation: nation, difficulty });
   });
-  if (canCancel) $('ng-cancel').addEventListener('click', () => backdrop.remove());
+  $('ng-cancel').addEventListener('click', () => {
+    backdrop.remove();
+    onCancel();
+  });
 }

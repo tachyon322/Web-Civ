@@ -277,6 +277,7 @@ button .price {
   opacity: 0;
   transition: opacity 0.2s;
   pointer-events: none;
+  z-index: 200;
 }
 
 #toast.show {
@@ -290,6 +291,12 @@ button .price {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 100;
+}
+
+/* Окно поверх окна не просвечивает. */
+.modal-backdrop .modal {
+  background: #10162a;
 }
 
 .modal {
@@ -730,4 +737,114 @@ body.no-game #forecast {
   .modal.paths .columns {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------- Вход, меню, сохранения, настройки ---------- */
+
+.modal .start.secondary {
+  background: var(--btn);
+  font-weight: 400;
+  margin-top: 8px;
+}
+
+.modal.menu {
+  width: 440px;
+  max-width: calc(100vw - 32px);
+}
+
+.modal.menu .row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.modal.menu .options {
+  display: grid;
+  gap: 8px;
+}
+
+.modal.menu .options button {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+}
+
+.modal.menu .options button span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.modal .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: baseline;
+}
+
+.modal .muted {
+  color: var(--muted);
+}
+
+.modal .small {
+  font-size: 12px;
+}
+
+.modal .reason {
+  color: var(--bad);
+  font-size: 12px;
+  min-height: 1em;
+  margin-top: 6px;
+}
+
+button.link {
+  background: none;
+  border: none;
+  color: var(--science);
+  padding: 2px 4px;
+}
+
+button.link:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
+
+.modal.saves .slots {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 4px;
+}
+
+.modal.saves .slot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+}
+
+.modal.saves .slot-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.modal label.check {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--text);
+  margin: 6px 0 4px;
+}
+
+.modal label.check input {
+  width: auto;
+}
+
+.modal.login a {
+  color: var(--science);
 }
