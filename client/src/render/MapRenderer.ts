@@ -2,7 +2,7 @@
 // Скорость: карта делится на куски, каждый кусок рисуется один раз и перерисовывается только
 // при изменении (подпись куска); куски за краем экрана отсекаются; кадр рисуется по требованию.
 
-import { Application, Container, Culler, Graphics, Rectangle, Text } from 'pixi.js';
+import { Application, Container, Culler, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import { neighborInDirection, neighbors, type MapSize } from '../core/hex';
 import { buildingDef } from '../core/data';
 import { atWar, cityMaxDurability, hasBuildingEffect, unitMaxStrength } from '../core/state';
@@ -23,12 +23,19 @@ import {
 } from '../core/types';
 import { EDGE_CORNERS, HEX_SIZE, TILT, hexCorners, pixelToTile, tileCenter, worldSize } from './layout';
 import { darken, hexColor, palette } from './palette';
+import { drawUnitArt, hasUnitArt } from './sprites/art';
+import { SpriteCache } from './sprites/cache';
+import { CITY_ANCHOR, CITY_SPRITE_H, CITY_SPRITE_W, citySvg } from './sprites/cities';
+import { UNIT_ANCHOR, UNIT_SPRITE_H, UNIT_SPRITE_W, figuresForLevel, unitSvg } from './sprites/units';
 
 const CHUNK = 16;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 2.5;
 /** Ниже этого масштаба подписи и мелкие детали не рисуются. */
 const LABEL_MIN_SCALE = 0.45;
+/** Масштаб спрайтов на карте (гекс — около 55 пикселей в ширину). */
+const UNIT_SCALE = 1;
+const CITY_SCALE = 0.95;
 /** Объём (в пикселях мира): обрыв суши к воде и подъём холмов и гор над равниной. */
 const COAST_DEPTH = 6;
 const ROUGH_LIFT = 3;
@@ -82,6 +89,9 @@ interface CityView {
   key: string;
   body: Graphics;
   label: Text;
+  /** Спрайт города (нет в простой графике) и ключ его текстуры. */
+  sprite: Sprite | null;
+  spriteKey: string;
 }
 
 function drawStar(g: Graphics, cx: number, cy: number, r: number): void {
@@ -186,7 +196,12 @@ export class MapRenderer {
   private territoryLayer = new Container();
   private reachLayer = new Graphics();
   private cityLayer = new Container();
+  /** Под юнитами — кольца выделения и врага; над ними — полоски силы и значки. */
+  private unitUnder = new Graphics();
+  private unitSprites = new Container();
   private unitLayer = new Graphics();
+  private unitPool: Sprite[] = [];
+  private sprites = new SpriteCache();
   private fogLayer = new Container();
   private labelLayer = new Container();
   private topLayer = new Graphics();
@@ -210,12 +225,15 @@ export class MapRenderer {
       this.decorLayer,
       this.reachLayer,
       this.cityLayer,
+      this.unitUnder,
+      this.unitSprites,
       this.unitLayer,
       this.fogLayer,
       this.labelLayer,
       this.topLayer,
     );
     app.stage.addChild(this.world);
+    this.sprites.onLoad = () => this.onSpritesLoaded();
     window.addEventListener('resize', () => this.requestRender());
   }
 
@@ -598,12 +616,12 @@ export class MapRenderer {
         hasBuildingEffect(city, 'walls'),
         city.buildings.filter((b) => buildingDef(b).wonder).length,
         city.project ? `${city.project.kind}${city.project.stages}` : '',
+        epochOf(state.powers[city.owner]),
         this.simple,
       ].join('|');
       let view = this.cityViews.get(city.id);
       if (view && view.key !== key) {
-        view.body.destroy();
-        view.label.destroy();
+        this.destroyCityView(view);
         view = undefined;
       }
       if (!view) {
@@ -613,22 +631,94 @@ export class MapRenderer {
     }
     for (const [id, view] of this.cityViews) {
       if (alive.has(id)) continue;
-      view.body.destroy();
-      view.label.destroy();
+      this.destroyCityView(view);
       this.cityViews.delete(id);
     }
   }
 
+  private destroyCityView(view: CityView): void {
+    view.body.destroy();
+    view.label.destroy();
+    view.sprite?.destroy();
+  }
+
+  /** Догрузились текстуры: подставить их городам и перерисовать юнитов. */
+  private onSpritesLoaded(): void {
+    for (const view of this.cityViews.values()) {
+      if (view.sprite && view.sprite.texture === Texture.EMPTY) {
+        view.sprite.texture = this.sprites.get(view.spriteKey, CITY_SPRITE_W, CITY_SPRITE_H, () => '') ?? Texture.EMPTY;
+      }
+    }
+    this.drawUnits();
+    this.requestRender();
+  }
+
   private createCityView(city: City, key: string): CityView {
     const state = this.state!;
-    const color = hexColor(state.powers[city.owner].color);
+    const owner = state.powers[city.owner];
+    const color = hexColor(owner.color);
     const { x, y } = tileCenter(this.size, city.tile);
     const body = new Graphics();
+    let sprite: Sprite | null = null;
+    let spriteKey = '';
     if (!this.simple) {
-      // Основание с толщиной и тенью.
-      body.ellipse(x + 4, y + 13, 24, 7).fill({ color: 0x000000, alpha: 0.25 });
-      body.poly(hexCorners(x, y + 4, 0.7)).fill(darken(color, 0.55)).stroke({ width: 2, color: 0x1a1a1a });
+      const walls = hasBuildingEffect(city, 'walls');
+      const epoch = epochOf(owner);
+      spriteKey = `c|${city.level}|${epoch}|${owner.color}|${city.isCapital}|${walls}`;
+      const texture = this.sprites.get(spriteKey, CITY_SPRITE_W, CITY_SPRITE_H, () =>
+        citySvg(city.level, epoch, owner.color, city.isCapital, walls),
+      );
+      sprite = new Sprite(texture ?? Texture.EMPTY);
+      sprite.anchor.set(CITY_ANCHOR.x / CITY_SPRITE_W, CITY_ANCHOR.y / CITY_SPRITE_H);
+      sprite.scale.set(CITY_SCALE);
+      sprite.position.set(x, y + 2);
+      sprite.cullable = true;
+      this.cityLayer.addChild(sprite);
+    } else this.drawFlatCity(body, city, x, y, color);
+    // Чудеса света — золотые купола справа, финальный проект — флаг слева.
+    const wonders = city.buildings.filter((b) => buildingDef(b).wonder).length;
+    for (let i = 0; i < Math.min(3, wonders); i++) {
+      const wx = x + 22 + i * 3;
+      const wy = y - 4 - i * 5;
+      arcFrom(body, wx, wy, 4, Math.PI, 0).fill(palette.gold).stroke({ width: 1, color: 0x6b5208 });
+      body.rect(wx - 4, wy, 8, 2).fill(palette.gold).stroke({ width: 0.8, color: 0x6b5208 });
     }
+    if (city.project) {
+      const fx = x - 26;
+      const fy = y - 20;
+      body.rect(fx, fy, 1.5, 16).fill(0x222222);
+      body.poly([fx + 1.5, fy, fx + 11, fy + 3, fx + 1.5, fy + 7]).fill(city.project.kind === 'science' ? 0x7fb3ff : 0xd58bff);
+      for (let i = 0; i < city.project.stages; i++) body.circle(fx + 4 + i * 3, fy + 10, 1.2).fill(0xffffff);
+    }
+    // Прочность — квадратики под городом: заполненные — оставшаяся.
+    const maxDur = cityMaxDurability(city);
+    for (let i = 0; i < maxDur; i++) {
+      const px = x - (maxDur * 7) / 2 + i * 7;
+      body.rect(px, y + (this.simple ? 10 : 18), 5, 4).fill(i < city.durability ? 0xe8e8e8 : 0x3a3a3a).stroke({ width: 1, color: 0x111111 });
+    }
+    body.cullable = true;
+    this.cityLayer.addChild(body);
+
+    const label = new Text({
+      text: `${city.isCapital && !this.simple ? '★ ' : ''}${city.name} · ${city.level}`,
+      style: {
+        fontFamily: 'system-ui, sans-serif',
+        fontSize: 13,
+        fontWeight: '600',
+        fill: 0xffffff,
+        stroke: { color: 0x000000, width: 3 },
+      },
+      resolution: 2,
+    });
+    label.anchor.set(0.5, 0);
+    label.position.set(x, y + (this.simple ? 16 : 23));
+    label.cullable = true;
+    this.labelLayer.addChild(label);
+    return { key, body, label, sprite, spriteKey };
+  }
+
+  /** Город в простой графике: шестиугольник цвета державы с домиками. */
+  private drawFlatCity(body: Graphics, city: City, x: number, y: number, color: number): void {
     body.poly(hexCorners(x, y, 0.7)).fill(color).stroke({ width: 2, color: 0x1a1a1a });
     if (hasBuildingEffect(city, 'walls')) {
       body.poly(hexCorners(x, y, 0.78)).stroke({ width: 3, color: palette.wall });
@@ -653,93 +743,98 @@ export class MapRenderer {
       }
       body.poly(star).fill(palette.gold).stroke({ width: 1, color: 0x6b5208 });
     }
-    // Чудеса света — золотые купола справа, финальный проект — флаг слева.
-    const wonders = city.buildings.filter((b) => buildingDef(b).wonder).length;
-    for (let i = 0; i < Math.min(3, wonders); i++) {
-      const wx = x + 17 + i * 3;
-      const wy = y - 8 - i * 5;
-      arcFrom(body, wx, wy, 4, Math.PI, 0).fill(palette.gold).stroke({ width: 1, color: 0x6b5208 });
-      body.rect(wx - 4, wy, 8, 2).fill(palette.gold);
-    }
-    if (city.project) {
-      const fx = x - 18;
-      const fy = y - 18;
-      body.rect(fx, fy, 1.5, 16).fill(0x222222);
-      body.poly([fx + 1.5, fy, fx + 11, fy + 3, fx + 1.5, fy + 7]).fill(city.project.kind === 'science' ? 0x7fb3ff : 0xd58bff);
-      for (let i = 0; i < city.project.stages; i++) body.circle(fx + 4 + i * 3, fy + 10, 1.2).fill(0xffffff);
-    }
-    // Прочность — квадратики над городом: заполненные — оставшаяся.
-    const maxDur = cityMaxDurability(city);
-    for (let i = 0; i < maxDur; i++) {
-      const px = x - (maxDur * 7) / 2 + i * 7;
-      body.rect(px, y + 10, 5, 4).fill(i < city.durability ? 0xe8e8e8 : 0x3a3a3a).stroke({ width: 1, color: 0x111111 });
-    }
-    body.cullable = true;
-    this.cityLayer.addChild(body);
-
-    const label = new Text({
-      text: `${city.name} · ${city.level}`,
-      style: {
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: 13,
-        fontWeight: '600',
-        fill: 0xffffff,
-        stroke: { color: 0x000000, width: 3 },
-      },
-      resolution: 2,
-    });
-    label.anchor.set(0.5, 0);
-    label.position.set(x, y + 16);
-    label.cullable = true;
-    this.labelLayer.addChild(label);
-    return { key, body, label };
   }
 
   private drawUnits(): void {
     const g = this.unitLayer;
     g.clear();
+    this.unitUnder.clear();
     const state = this.state;
-    if (!state) return;
-    for (const unit of state.units) {
-      if (unit.owner !== state.humanPower && !this.visible[unit.tile]) continue;
-      this.drawUnit(g, unit, unit.tile === this.overlay.selectedTile);
+    let used = 0;
+    if (state) {
+      // Нижние ряды рисуются поверх верхних — фигурки не залезают друг на друга.
+      const list = state.units
+        .filter((u) => u.owner === state.humanPower || this.visible[u.tile])
+        .sort((a, b) => a.tile - b.tile);
+      for (const unit of list) used = this.drawUnit(g, unit, unit.tile === this.overlay.selectedTile, used);
     }
+    for (let i = used; i < this.unitPool.length; i++) this.unitPool[i].visible = false;
   }
 
-  private drawUnit(g: Graphics, unit: Unit, selected: boolean): void {
+  /** Юнит: спрайт отряда (или фишка в простой графике и пока спрайт грузится) и значки. Возвращает число занятых спрайтов. */
+  private drawUnit(g: Graphics, unit: Unit, selected: boolean, used: number): number {
     const state = this.state!;
     const { x, y } = tileCenter(this.size, unit.tile);
     const onCity = state.cities.some((c) => c.tile === unit.tile);
-    const ux = onCity ? x - 15 : x;
-    const uy = onCity ? y + 2 : y - 4;
-    const color = hexColor(state.powers[unit.owner].color);
+    const owner = state.powers[unit.owner];
+    const color = hexColor(owner.color);
+    const epoch = epochOf(owner);
     const enemy = atWar(state, state.humanPower, unit.owner);
-    const outline = { width: enemy ? 3 : 2, color: enemy ? 0xe0342b : 0x141414 };
-    if (selected) g.circle(ux, uy, 16).stroke({ width: 3, color: palette.highlight });
-    if (this.simple) g.circle(ux, uy, 12).fill(color).stroke(outline);
-    else {
-      // Фишка с толщиной и тенью: нижний диск темнее, верхний — цвет державы.
-      g.ellipse(ux + 3, uy + 13, 12, 4).fill({ color: 0x000000, alpha: 0.3 });
-      g.circle(ux, uy + 3, 12).fill(darken(color, 0.6)).stroke(outline);
-      g.circle(ux, uy, 12).fill(color).stroke(outline);
-      arcFrom(g, ux, uy, 9, Math.PI * 1.1, Math.PI * 1.6).stroke({ width: 2, color: 0xffffff, alpha: 0.35 });
-    }
-    drawUnitGlyph(g, unit.type, epochOf(state.powers[unit.owner]), ux, uy);
+    const figures = figuresForLevel(unit.type, unit.level);
+    const texture = this.simple
+      ? null
+      : hasUnitArt(unit.type)
+        ? this.sprites.getDrawn(`ua|${unit.type}|${epoch}|${owner.color}`, () => drawUnitArt(unit.type, epoch, owner.color))
+        : this.sprites.get(`u|${unit.type}|${epoch}|${owner.color}|${figures}`, UNIT_SPRITE_W, UNIT_SPRITE_H, () =>
+            unitSvg(unit.type, epoch, owner.color, figures),
+          );
 
-    // Уровень — точки над фишкой, сила — полоска под ней.
+    let cx: number; // центр значков по горизонтали
+    let top: number; // верх фигуры — над ним точки уровня
+    let bottom: number; // низ подставки — под ним полоска силы
+    if (texture) {
+      const bx = onCity ? x - 22 : x;
+      const by = onCity ? y + 15 : y + 12;
+      const u = this.unitUnder;
+      if (selected) u.ellipse(bx, by, 22, 8).stroke({ width: 3, color: palette.highlight });
+      if (enemy) u.ellipse(bx, by + 0.5, 20, 7).fill({ color: 0xe0342b, alpha: 0.35 }).stroke({ width: 2.5, color: 0xe0342b });
+      let sprite = this.unitPool[used];
+      if (!sprite) {
+        sprite = new Sprite();
+        sprite.anchor.set(UNIT_ANCHOR.x / UNIT_SPRITE_W, UNIT_ANCHOR.y / UNIT_SPRITE_H);
+        sprite.scale.set(UNIT_SCALE);
+        this.unitPool.push(sprite);
+        this.unitSprites.addChild(sprite);
+      }
+      sprite.texture = texture;
+      sprite.position.set(bx, by);
+      sprite.visible = true;
+      used++;
+      cx = bx;
+      top = by - 50 * UNIT_SCALE;
+      bottom = by + 5 * UNIT_SCALE;
+    } else {
+      const ux = onCity ? x - 15 : x;
+      const uy = onCity ? y + 2 : y - 4;
+      const outline = { width: enemy ? 3 : 2, color: enemy ? 0xe0342b : 0x141414 };
+      if (selected) g.circle(ux, uy, 16).stroke({ width: 3, color: palette.highlight });
+      if (this.simple) g.circle(ux, uy, 12).fill(color).stroke(outline);
+      else {
+        g.ellipse(ux + 3, uy + 13, 12, 4).fill({ color: 0x000000, alpha: 0.3 });
+        g.circle(ux, uy + 3, 12).fill(darken(color, 0.6)).stroke(outline);
+        g.circle(ux, uy, 12).fill(color).stroke(outline);
+      }
+      drawUnitGlyph(g, unit.type, epoch, ux, uy);
+      cx = ux;
+      top = uy - 12;
+      bottom = uy + 13;
+    }
+
+    // Уровень — точки над фигурой, сила — полоска под подставкой, звёзды — слева.
     for (let i = 0; i < unit.level; i++) {
-      g.circle(ux - (unit.level - 1) * 3 + i * 6, uy - 16, 2).fill(0xffffff).stroke({ width: 1, color: 0x141414 });
+      g.circle(cx - (unit.level - 1) * 3 + i * 6, top - 4, 2).fill(0xffffff).stroke({ width: 1, color: 0x141414 });
     }
     const share = Math.max(0, Math.min(1, unit.strength / unitMaxStrength(unit)));
-    g.rect(ux - 11, uy + 14, 22, 4).fill(0x1a1a1a);
-    g.rect(ux - 11, uy + 14, 22 * share, 4).fill(share > 0.6 ? 0x5fe36b : share > 0.3 ? 0xf5c542 : 0xe0342b);
-    for (let i = 0; i < unit.stars; i++) drawStar(g, ux - 16, uy - 8 + i * 7, 3.2);
+    g.rect(cx - 11, bottom + 1, 22, 4).fill(0x1a1a1a);
+    g.rect(cx - 11, bottom + 1, 22 * share, 4).fill(share > 0.6 ? 0x5fe36b : share > 0.3 ? 0xf5c542 : 0xe0342b);
+    for (let i = 0; i < unit.stars; i++) drawStar(g, cx - 17, top + 6 + i * 7, 3.2);
 
     if (unit.owner === state.humanPower) {
       const dot = unit.routeTarget !== NONE ? 0x7fb3ff : unit.mp > 0 ? 0x5fe36b : 0x8a8a8a;
-      g.circle(ux + 10, uy + 9, 3.5).fill(dot).stroke({ width: 1, color: 0x141414 });
-      if (unit.fortified) g.rect(ux + 7, uy - 13, 6, 6).fill(0xb8c4d6).stroke({ width: 1, color: 0x141414 });
+      g.circle(cx + 14, bottom - 3, 3.5).fill(dot).stroke({ width: 1, color: 0x141414 });
+      if (unit.fortified) g.rect(cx + 11, top + 4, 6, 6).fill(0xb8c4d6).stroke({ width: 1, color: 0x141414 });
     }
+    return used;
   }
 
   private drawOverlay(): void {
