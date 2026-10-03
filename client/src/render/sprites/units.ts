@@ -263,18 +263,13 @@ function place(x: number, y: number, s: number, body: string): string {
   return `<g transform="translate(${x} ${y}) scale(${s})">${body}</g>`;
 }
 
-/** Подставка в цвет нации с тенью — общая для SVG-фигурок и рисованных спрайтов. */
+/** Подставка в цвет нации с тенью. */
 function podium(color: string): string {
   return `
     <ellipse cx="38" cy="58.4" rx="21" ry="5.6" fill="#000" opacity="0.3"/>
     <ellipse cx="36" cy="57" rx="20" ry="5.6" fill="${shade(color, 0.55)}" ${stroke()}/>
     <ellipse cx="36" cy="55.8" rx="20" ry="5.4" fill="${color}" ${stroke()}/>
     <ellipse cx="33" cy="54.6" rx="11" ry="2.2" fill="#fff" opacity="0.18"/>`;
-}
-
-/** Только подставка — под рисованную фигуру. */
-export function podiumSvg(color: string): string {
-  return svgDoc(UNIT_SPRITE_W, UNIT_SPRITE_H, podium(color));
 }
 
 /** SVG юнита: тип, эпоха владельца, цвет нации, число фигур. */
