@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Нарезка листов юнитов, сгенерированных ИИ, в атласы для игры.
 
-Вход:  art-src/<тип>.(png|webp) — 5 фигур в ряд (эпохи 0–4), одежда цвета нации — пурпур #FF00FF,
+Вход:  art-src/<тип>.(png|webp|jpg) — 5 фигур в ряд (эпохи 0–4), одежда цвета нации — пурпур #FF00FF,
        фон прозрачный или белый.
 Выход: src/render/sprites/art/<тип>.png       — фигуры, пурпур заменён серым;
        src/render/sprites/art/<тип>-mask.png  — маска цвета нации (яркость пурпура + альфа);
@@ -28,7 +28,7 @@ TARGET_HEIGHT = 144
 PAD = 2
 # Замкнутые куски белого фона внутри фигуры (между луком и тетивой) от этой площади (px исходника)
 # тоже считаются фоном. Только для листов, где белого в самих фигурах крупными пятнами нет.
-HOLES = {'archer': 1000}
+HOLES = {'archer': 1000, 'citizen': 300}
 # Мелкий кусок дальше этого расстояния от крупной фигуры — мусор фона, а не кончик оружия.
 ATTACH_DISTANCE = 6
 
@@ -147,7 +147,7 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     meta = {}
     for kind in TYPES:
-        src = next((p for p in (SRC / f'{kind}.png', SRC / f'{kind}.webp') if p.exists()), None)
+        src = next((p for ext in ('png', 'webp', 'jpg') if (p := SRC / f'{kind}.{ext}').exists()), None)
         if src:
             meta[kind] = process(kind, src)
             print(kind, 'ok', [f"{f['w']}x{f['h']}" for f in meta[kind]['frames']])
