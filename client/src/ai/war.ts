@@ -1,10 +1,13 @@
-// Решение о войне: бот сравнивает свою армию с индексом сдерживания цели и смотрит, есть ли что взять рядом.
+// Решение о войне: бот сравнивает свою армию с индексом сдерживания цели (вместе с её сюзереном,
+// вассалами и союзниками, которые вступятся) и смотрит, есть ли что взять рядом.
+// Не нападает на союзников и тех, кто ему нравится; договор нарушает только агрессор.
 
 import { aiConfig } from '../core/data';
 import { armyStrength, deterrenceIndex } from '../core/deterrence';
-import { hasMet } from '../core/diplomacy';
+import { warBlocker, warSides } from '../core/diplomacy';
 import { distance } from '../core/hex';
-import { atWar, mapSize } from '../core/state';
+import { opinion } from '../core/relations';
+import { allied, hasPact, mapSize, vassalsOf } from '../core/state';
 import type { City } from '../core/types';
 import { exec, knownForeignCities, myCities, type BotContext } from './context';
 
@@ -29,18 +32,29 @@ export function chooseWarTarget(ctx: BotContext): number | null {
   const cfg = aiConfig.war;
   if (state.turn < cfg.minTurn) return null;
   if (state.powers[power].wars.length >= cfg.maxOffensiveWars) return null;
-  const army = armyStrength(state, power);
+  const army = [power, ...vassalsOf(state, power)].reduce((sum, p) => sum + armyStrength(state, p), 0);
   if (army < cfg.minArmy) return null;
-  const threshold = warThreshold(ctx);
   let best: number | null = null;
   let bestScore = 0;
   for (const other of state.powers) {
-    if (other.id === power || !other.alive || !hasMet(state, power, other.id) || atWar(state, power, other.id)) continue;
+    if (other.id === power || !other.alive || warBlocker(state, power, other.id)) continue;
+    if (allied(state, power, other.id)) continue;
+    if (hasPact(state, power, other.id, 'trade') && !ctx.character.breaksTreaties) continue;
+    const leader = other.id === state.coalitionLeader;
+    if (!leader && opinion(state, power, other.id).total > ctx.character.warOpinionMax) continue;
     const { gain } = warGain(ctx, other.id);
     if (gain <= 0) continue;
-    // Цель, которая уже с кем-то воюет, не может бросить на нас всю армию.
-    const busy = 1 + cfg.busyTargetDiscount * other.wars.length;
-    const risk = Math.max(1, deterrenceIndex(state, other.id).total / busy);
+    // Вступятся сюзерен, вассалы и союзники цели. Кто уже с кем-то воюет, не бросит на нас всю армию.
+    const sides = warSides(state, power, other.id);
+    const risk = Math.max(
+      1,
+      [...sides.defenders, ...sides.allies].reduce((sum, p) => {
+        const busy = 1 + cfg.busyTargetDiscount * state.powers[p].wars.length;
+        return sum + deterrenceIndex(state, p).total / busy;
+      }, 0),
+    );
+    // Против того, кто близок к победе, бот идёт охотнее.
+    const threshold = warThreshold(ctx) * (leader ? aiConfig.diplomacy.leaderWarFactor : 1);
     if (army < risk * threshold) continue;
     // Чем слабее цель и богаче добыча, тем лучше.
     const score = (gain * army) / risk;

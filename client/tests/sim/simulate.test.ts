@@ -30,9 +30,15 @@ it.skipIf(!env.SIM)('симуляция партии ботов', () => {
         `  ${p.name.padEnd(10)} ${(p.character ?? 'игрок').padEnd(12)} ${p.alive ? '' : '[выбыл] '}` +
           `городов ${cities.length} (${cities.map((c) => c.level).join('')}), золото ${p.gold}, ` +
           `жителей ${unitsOf(s, p.id).filter((u) => u.type === 'citizen').length}, армия ${armyStrength(s, p.id)}, ` +
-          `войны: ${p.wars.map((w) => s.powers[w].name).join(', ') || '—'}`,
+          `войны: ${p.wars.map((w) => s.powers[w].name).join(', ') || '—'}` +
+          `${p.suzerain >= 0 ? `, сюзерен: ${s.powers[p.suzerain].name}` : ''}`,
       );
     }
+    const pacts = (kind: string) =>
+      s.pacts.filter((x) => x.kind === kind).map((x) => `${s.powers[x.a].name}—${s.powers[x.b].name}`).join(', ') || '—';
+    console.log(`  Торговля: ${pacts('trade')}`);
+    console.log(`  Союзы: ${pacts('alliance')}`);
+    console.log(`  Перемирия: ${pacts('truce')}`);
   };
   for (let t = 0; t < turns; t++) {
     const t0 = performance.now();
@@ -44,7 +50,11 @@ it.skipIf(!env.SIM)('симуляция партии ботов', () => {
     if (s.turn % 25 === 1) report();
   }
   console.log('\nСобытия:');
-  for (const e of s.log.filter((x) => /Объявлена война|выбывает|захвачен державой|разграблен державой|освобождён державой/.test(x.text))) {
+  const seen = new Set<string>();
+  for (const e of s.log.filter((x) => /Объявлена война|вступает в войну|выбывает|захвачен державой|разграблен державой|освобождён державой|^Мир|^Союз|вассалом|унию|дань|коалиция|восстаёт|расторгает/.test(x.text))) {
+    const key = `${e.turn}:${e.text}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     console.log(`  ${e.turn}: ${e.text}`);
   }
 }, 600000);

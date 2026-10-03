@@ -1,7 +1,7 @@
 // Маленькая ручная карта для тестов правил: всё — равнина, без особых клеток.
 
 import { createCity, createUnit } from '../src/core/entities';
-import { startWar } from '../src/core/diplomacy';
+import { startWar } from '../src/core/relations';
 import { NONE, T_PLAINS, type GameState, type Unit, type UnitType } from '../src/core/types';
 
 export function blankState(width = 12, height = 10, powers = 2): GameState {
@@ -29,9 +29,14 @@ export function blankState(width = 12, height = 10, powers = 2): GameState {
       cityNamesUsed: 0,
       met: [],
       wars: [],
+      suzerain: NONE,
+      memories: [],
     })),
     cities: [],
     units: [],
+    pacts: [],
+    proposals: [],
+    coalitionLeader: NONE,
     nextId: 1,
     log: [],
   };
@@ -49,6 +54,10 @@ export function addCitizen(state: GameState, power: number, col: number, row: nu
 
 export function addUnit(state: GameState, power: number, type: UnitType, col: number, row: number, level = 2, mp = 4): Unit {
   return createUnit(state, power, type, at(state, col, row), mp, level);
+}
+
+export function meetAll(state: GameState): void {
+  for (const p of state.powers) for (const q of state.powers) if (p.id !== q.id && !p.met.includes(q.id)) p.met.push(q.id);
 }
 
 export function declareWar(state: GameState, a: number, b: number): void {

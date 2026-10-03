@@ -1,0 +1,424 @@
+// Окно дипломатии: встреченные державы, их отношение к игроку с разбивкой, статус, сила,
+// предложения от ботов и все дипломатические действия с прогнозом ответа.
+// Прогноз считается той же функцией ядра, что и ответ бота, — поэтому они не расходятся.
+
+import {
+  NO_TERMS,
+  accepts,
+  atWar,
+  characterDef,
+  citiesOf,
+  dealBlocker,
+  dealText,
+  deterrenceIndex,
+  diplomacyConfig,
+  evaluateDeal,
+  findPact,
+  giftForecast,
+  grossGold,
+  hasPact,
+  opinion,
+  pendingProposals,
+  refusalText,
+  truceLeft,
+  turnsWord,
+  validate,
+  warSides,
+  warTurns,
+  type Breakdown,
+  type Command,
+  type Deal,
+  type GameState,
+  type PeaceTerms,
+  type Proposal,
+} from '../core';
+import { NONE } from '../core/types';
+import { esc, showChoice } from './dialog';
+
+export interface DiplomacyHost {
+  readonly state: GameState;
+  readonly power: number;
+  /** Выполняет команду игрока; false — отказ (причина уже показана). */
+  dispatch(cmd: Command): boolean;
+}
+
+function signed(n: number): string {
+  return n > 0 ? `+${n}` : `${n}`;
+}
+
+function roundGold(x: number): number {
+  return Math.max(5, Math.round(x / 5) * 5);
+}
+
+function breakdownLines(b: Breakdown): string {
+  if (!b.items.length) return '<div class="muted">Ничего особенного</div>';
+  return b.items
+    .map((i) => `<div class="row"><span>${esc(i.label)}</span><span class="${i.value >= 0 ? 'good' : 'bad'}">${signed(i.value)}</span></div>`)
+    .join('');
+}
+
+/** Статус пары словами. */
+export function statusText(state: GameState, me: number, t: number): string {
+  if (atWar(state, me, t)) {
+    const n = warTurns(state, me, t);
+    return `Война (${n} ${turnsWord(n)})`;
+  }
+  if (state.powers[me].suzerain === t) return 'Ваш сюзерен';
+  if (state.powers[t].suzerain === me) return 'Ваш вассал';
+  const parts: string[] = [];
+  const alliance = findPact(state, me, t, 'alliance');
+  if (alliance) parts.push(`Союз (${state.turn - alliance.since} ${turnsWord(state.turn - alliance.since)})`);
+  if (hasPact(state, me, t, 'trade')) parts.push('Торговый договор');
+  const truce = truceLeft(state, me, t);
+  if (truce) parts.push(`Перемирие ещё ${truce} ${turnsWord(truce)}`);
+  return parts.join(', ') || 'Нейтралитет';
+}
+
+export class DiplomacyWindow {
+  private root: HTMLElement | null = null;
+  private target = NONE;
+  private peace: PeaceTerms = { ...NO_TERMS };
+  private joinGold = 0;
+  /** Команды кнопок текущей отрисовки: data-i — индекс. */
+  private actions: { cmd: Command; confirm?: () => void }[] = [];
+  private onKey = (e: KeyboardEvent) => {
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    // Поверх окна может быть подтверждение — тогда Esc закрывает его, а не окно.
+    if (e.key !== 'Escape' || !this.root || backdrops[backdrops.length - 1] !== this.root) return;
+    e.stopPropagation();
+    this.close();
+  };
+
+  constructor(
+    private host: DiplomacyHost,
+    private onClose: () => void,
+  ) {}
+
+  get isOpen(): boolean {
+    return this.root !== null;
+  }
+
+  open(target = NONE): void {
+    const met = this.metPowers();
+    const pending = pendingProposals(this.host.state, this.host.power)[0];
+    this.target = target !== NONE ? target : (pending?.from ?? (met.includes(this.target) ? this.target : (met[0] ?? NONE)));
+    this.resetBuilders();
+    if (!this.root) {
+      this.root = document.createElement('div');
+      this.root.className = 'modal-backdrop';
+      this.root.addEventListener('click', (e) => this.onClick(e));
+      this.root.addEventListener('change', (e) => this.onChange(e));
+      window.addEventListener('keydown', this.onKey, true);
+      document.body.appendChild(this.root);
+    }
+    this.render();
+  }
+
+  close(): void {
+    if (!this.root) return;
+    this.root.remove();
+    this.root = null;
+    window.removeEventListener('keydown', this.onKey, true);
+    this.onClose();
+  }
+
+  /** Перерисовка, если окно открыто (после хода или чужих изменений). */
+  update(): void {
+    if (this.root) this.render();
+  }
+
+  private resetBuilders(): void {
+    this.peace = { ...NO_TERMS };
+    this.joinGold = 0;
+  }
+
+  private metPowers(): number[] {
+    const { state, power } = this.host;
+    return state.powers[power].met.filter((p) => state.powers[p].alive).sort((a, b) => a - b);
+  }
+
+  // ---------- События ----------
+
+  private onClick(e: MouseEvent): void {
+    const el = e.target as HTMLElement;
+    if (el === this.root || el.closest('.close')) {
+      this.close();
+      return;
+    }
+    const pick = el.closest<HTMLElement>('[data-target]');
+    if (pick) {
+      this.target = Number(pick.dataset.target);
+      this.resetBuilders();
+      this.render();
+      return;
+    }
+    const btn = el.closest<HTMLButtonElement>('button[data-i]');
+    if (!btn || btn.disabled) return;
+    const action = this.actions[Number(btn.dataset.i)];
+    if (action.confirm) {
+      action.confirm();
+      return;
+    }
+    this.run(action.cmd);
+  }
+
+  private run(cmd: Command): void {
+    if (this.host.dispatch(cmd)) {
+      if (cmd.type === 'Propose' && cmd.deal.kind === 'peace') this.resetBuilders();
+      this.render();
+    }
+  }
+
+  private onChange(e: Event): void {
+    const sel = e.target as HTMLSelectElement;
+    const field = sel.dataset.field;
+    if (!field) return;
+    const v = Number(sel.value);
+    if (field === 'joinGold') this.joinGold = v;
+    else (this.peace as unknown as Record<string, number>)[field] = v;
+    this.render();
+  }
+
+  // ---------- Отрисовка ----------
+
+  private button(label: string, cmd: Command, opts: { blocker?: string | null; confirm?: () => void; cls?: string } = {}): string {
+    const v = validate(this.host.state, cmd);
+    const reason = opts.blocker ?? (v.ok ? null : v.reason);
+    const i = this.actions.push({ cmd, confirm: opts.confirm }) - 1;
+    return `<button data-i="${i}" class="${opts.cls ?? ''}" ${reason ? 'disabled' : ''} title="${esc(reason ?? '')}">${esc(label)}</button>`;
+  }
+
+  /** Прогноз ответа бота на сделку: «согласятся» или «Нет: …» с разбивкой во всплывающей подсказке. */
+  private forecast(deal: Deal): { ok: boolean; html: string } {
+    const { state, power } = this.host;
+    const blocker = dealBlocker(state, power, this.target, deal);
+    if (blocker) return { ok: false, html: `<div class="reason">${esc(blocker)}</div>` };
+    const score = evaluateDeal(state, power, this.target, deal);
+    const tip = score.items.map((i) => `${i.label}: ${signed(i.value)}`).join('\n') + `\nИтого: ${signed(score.total)}`;
+    if (accepts(score)) return { ok: true, html: `<div class="good small" title="${esc(tip)}">✓ согласятся (счёт ${signed(score.total)})</div>` };
+    return { ok: false, html: `<div class="reason" title="${esc(tip)}">${esc(refusalText(state, power, this.target, score))}</div>` };
+  }
+
+  private render(): void {
+    if (!this.root) return;
+    this.actions = [];
+    const { state, power } = this.host;
+    const met = this.metPowers();
+    const pending = pendingProposals(state, power);
+    const list = met
+      .map((p) => {
+        const pw = state.powers[p];
+        const op = opinion(state, p, power).total;
+        const badge = pending.some((pr) => pr.from === p) ? ' 📜' : '';
+        return `<li data-target="${p}" class="${p === this.target ? 'selected' : ''}">
+          <span class="swatch" style="background:${pw.color}"></span>
+          <span class="name">${esc(pw.name)}${badge}</span>
+          <span class="op ${op >= 0 ? 'good' : 'bad'}">${signed(op)}</span>
+          <span class="status">${esc(statusText(state, power, p))}</span>
+        </li>`;
+      })
+      .join('');
+    this.root.innerHTML = `
+      <div class="panel modal diplo">
+        <div class="diplo-head"><h1>Дипломатия</h1><button class="close" title="Закрыть (Esc)">✕</button></div>
+        ${
+          met.length
+            ? `<div class="diplo-body"><ul class="powers">${list}</ul><div class="detail">${this.detail()}</div></div>`
+            : '<p class="muted">Вы ещё ни с кем не встречались. Дипломатия с державой открывается после встречи на карте.</p>'
+        }
+      </div>`;
+  }
+
+  private detail(): string {
+    const { state, power } = this.host;
+    const t = this.target;
+    if (t === NONE || !state.powers[t]?.alive) return '<p class="muted">Выберите державу слева.</p>';
+    const pt = state.powers[t];
+    const me = state.powers[power];
+    const op = opinion(state, t, power);
+    const deterrence = deterrenceIndex(state, t);
+    const character = pt.character ? characterDef(pt.character) : null;
+    let html = `<h2><span class="swatch" style="background:${pt.color}"></span>${esc(pt.name)}</h2>
+      <div class="sub">${character ? `${esc(character.name)} — ${esc(character.description)}` : 'игрок'}</div>
+      <div class="row"><span>Статус</span><span>${esc(statusText(state, power, t))}</span></div>`;
+    if (pt.suzerain !== NONE && pt.suzerain !== power) {
+      html += `<div class="row"><span>Сюзерен</span><span>${esc(state.powers[pt.suzerain].name)}</span></div>`;
+    }
+    const wars = pt.wars.map((w) => state.powers[w].name);
+    if (wars.length) html += `<div class="row"><span>Воюет с</span><span>${esc(wars.join(', '))}</span></div>`;
+    html += `<div class="row" title="${esc(deterrence.items.map((i) => `${i.label}: ${i.value}`).join('\n'))}"><span>Индекс сдерживания</span><span>${deterrence.total} (ваш ${deterrenceIndex(state, power).total})</span></div>
+      <div class="row" title="По нему оцениваются подарки: ценность — в ходах дохода получателя"><span>Доход золота</span><span>${grossGold(state, t)} за ход</span></div>
+      <h3>Их отношение к вам: <span class="${op.total >= 0 ? 'good' : 'bad'}">${signed(op.total)}</span></h3>
+      <div class="breakdown">${breakdownLines(op)}</div>`;
+
+    const proposals = pendingProposals(state, power).filter((pr) => pr.from === t);
+    if (proposals.length) html += `<h3>Предложения вам</h3>${proposals.map((pr) => this.proposalBlock(pr)).join('')}`;
+
+    if (atWar(state, power, t)) {
+      html += this.peaceBlock();
+    } else {
+      html += this.giftsBlock();
+      html += this.pactsBlock();
+      html += this.joinWarBlock();
+      html += this.tributeBlock();
+    }
+    if (!atWar(state, power, t) && me.suzerain === NONE && pt.suzerain !== power && me.suzerain !== t) {
+      html += `<h3>Война</h3><div class="actions">${this.button(`Объявить войну: ${pt.name}`, { type: 'DeclareWar', power, target: t }, {
+        confirm: () => this.confirmWar(t),
+        cls: 'danger',
+      })}</div>`;
+    }
+    return html;
+  }
+
+  private proposalBlock(pr: Proposal): string {
+    const { state, power } = this.host;
+    let note = '';
+    if (pr.deal.kind === 'tribute') note = `Отказ испортит отношения (${diplomacyConfig.events.tributeRefused}); дань тоже оставит обиду.`;
+    if (pr.deal.kind === 'joinWar') note = 'Если согласитесь, вы объявите войну — с её последствиями.';
+    if (pr.deal.kind === 'peace' && pr.deal.terms.vassal === power) note = 'Вассал платит 20% дохода, воюет на стороне сюзерена и не заключает союзов.';
+    const fresh = pr.turn === state.turn - 1 || pr.turn === state.turn;
+    return `<div class="proposal">
+      <div><b>${esc(dealText(state, pr.from, power, pr.deal))}</b>${fresh ? '' : ' <span class="muted">(истекает в этом ходу)</span>'}</div>
+      ${note ? `<div class="muted small">${esc(note)}</div>` : ''}
+      <div class="actions two">
+        ${this.button('Принять', { type: 'Respond', power, proposalId: pr.id, accept: true }, { cls: 'ok' })}
+        ${this.button('Отклонить', { type: 'Respond', power, proposalId: pr.id, accept: false })}
+      </div>
+    </div>`;
+  }
+
+  private giftsBlock(): string {
+    const { state, power } = this.host;
+    const t = this.target;
+    const me = state.powers[power];
+    const gold = [25, 50, 100, 250].filter((g, i) => i === 0 || g <= me.gold);
+    const culture = [10, 25, 50].filter((c, i) => i === 0 || c <= me.culture);
+    const giftBtn = (amount: number, resource: 'gold' | 'culture') => {
+      const f = giftForecast(state, power, t, amount, resource);
+      const cmd: Command =
+        resource === 'gold' ? { type: 'Gift', power, target: t, gold: amount } : { type: 'CultureExchange', power, target: t, culture: amount };
+      const label = `${amount} ${resource === 'gold' ? '🪙' : '🎭'} → ${signed(f.value)}`;
+      const v = validate(state, cmd);
+      const i = this.actions.push({ cmd }) - 1;
+      const tip = v.ok ? f.notes.join('\n') : v.reason;
+      return `<button data-i="${i}" ${v.ok ? '' : 'disabled'} title="${esc(tip)}">${esc(label)}</button>`;
+    };
+    return `<h3>Подарки</h3>
+      <div class="muted small">Ценность — в ходах дохода получателя; повторный подарок за ${diplomacyConfig.gift.repeatWindow} ходов вдвое слабее, максимум +${diplomacyConfig.gift.max}.</div>
+      <div class="actions row-buttons">${gold.map((g) => giftBtn(g, 'gold')).join('')}</div>
+      <div class="muted small">Культурный обмен (тратит культуру):</div>
+      <div class="actions row-buttons">${culture.map((c) => giftBtn(c, 'culture')).join('')}</div>`;
+  }
+
+  private dealRow(label: string, deal: Deal): string {
+    const { power } = this.host;
+    const f = this.forecast(deal);
+    const cmd: Command = { type: 'Propose', power, target: this.target, deal };
+    const human = this.host.state.powers[this.target].isHuman;
+    return `<div class="deal">${this.button(label, cmd, { blocker: f.ok || human || deal.kind === 'tribute' ? null : 'Откажут' })}${f.html}</div>`;
+  }
+
+  private pactsBlock(): string {
+    const { state, power } = this.host;
+    const t = this.target;
+    let html = '<h3>Договоры</h3>';
+    if (hasPact(state, power, t, 'trade')) {
+      html += `<div class="deal">${this.button('Расторгнуть торговый договор', { type: 'CancelPact', power, target: t, kind: 'trade' })}<div class="muted small">партнёр это запомнит (${diplomacyConfig.events.treatyCancelled})</div></div>`;
+    } else {
+      const cfg = diplomacyConfig.trade;
+      html += this.dealRow(`Торговый договор (+${cfg.goldBase} 🪙 обоим, +${cfg.goldBorder} при общей границе)`, { kind: 'trade' });
+    }
+    if (hasPact(state, power, t, 'alliance')) {
+      html += `<div class="deal">${this.button('Расторгнуть союз', { type: 'CancelPact', power, target: t, kind: 'alliance' })}</div>`;
+      html += this.dealRow('Уния: они входят в вашу державу', { kind: 'union' });
+    } else {
+      html += this.dealRow('Союз: общая сеть, обзор и оборона', { kind: 'alliance' });
+    }
+    return html;
+  }
+
+  private joinWarBlock(): string {
+    const { state, power } = this.host;
+    const enemies = state.powers[power].wars.filter((e) => e !== this.target);
+    if (!enemies.length) return '';
+    const me = state.powers[power];
+    const amounts = [0, 25, 50, 100, 200].filter((g) => g <= me.gold);
+    if (!amounts.includes(this.joinGold)) this.joinGold = 0;
+    let html = `<h3>Помощь в войне</h3>
+      <label class="small">Плата: <select data-field="joinGold">${amounts
+        .map((g) => `<option value="${g}" ${g === this.joinGold ? 'selected' : ''}>${g ? `${g} 🪙` : 'без платы'}</option>`)
+        .join('')}</select></label>`;
+    for (const e of enemies) {
+      html += this.dealRow(`Вступить в войну против: ${state.powers[e].name}`, { kind: 'joinWar', enemy: e, gold: this.joinGold });
+    }
+    return html;
+  }
+
+  private tributeBlock(): string {
+    const { state } = this.host;
+    const income = Math.max(diplomacyConfig.gift.minIncome, grossGold(state, this.target));
+    const amounts = [...new Set([2, 5, 10].map((k) => roundGold(income * k)))];
+    let html = `<h3>Потребовать дань</h3><div class="muted small">Платят, только если вы намного сильнее; отказ портит отношения обеим сторонам.</div>`;
+    for (const gold of amounts) html += this.dealRow(`Дань ${gold} 🪙`, { kind: 'tribute', gold });
+    return html;
+  }
+
+  private peaceBlock(): string {
+    const { state, power } = this.host;
+    const t = this.target;
+    const me = state.powers[power];
+    const pt = state.powers[t];
+    const goldOptions = (max: number, value: number) =>
+      [0, 25, 50, 100, 200, 400]
+        .filter((g) => g === 0 || g <= max)
+        .map((g) => `<option value="${g}" ${g === value ? 'selected' : ''}>${g ? `${g} 🪙` : 'нет'}</option>`)
+        .join('');
+    const cityOptions = (owner: number, value: number) =>
+      [`<option value="${NONE}">нет</option>`]
+        .concat(
+          citiesOf(state, owner)
+            .filter((c) => !c.isCapital && me.explored[c.tile])
+            .map((c) => `<option value="${c.id}" ${c.id === value ? 'selected' : ''}>${esc(c.name)} (ур. ${c.level})</option>`),
+        )
+        .join('');
+    const p = this.peace;
+    const vassal = `<option value="${NONE}">нет</option>
+      <option value="${t}" ${p.vassal === t ? 'selected' : ''}>${esc(pt.name)} — ваш вассал</option>
+      <option value="${power}" ${p.vassal === power ? 'selected' : ''}>вы — вассал державы ${esc(pt.name)}</option>`;
+    const deal: Deal = { kind: 'peace', terms: { ...p } };
+    const f = this.forecast(deal);
+    return `<h3>Мир</h3>
+      <div class="muted small">После мира — перемирие на ${diplomacyConfig.truceTurns} ходов. Столицу по договору не отдают.</div>
+      <div class="terms">
+        <label>Вы платите<select data-field="giveGold">${goldOptions(me.gold, p.giveGold)}</select></label>
+        <label>Они платят<select data-field="takeGold">${goldOptions(pt.gold, p.takeGold)}</select></label>
+        <label>Вы отдаёте город<select data-field="giveCity">${cityOptions(power, p.giveCity)}</select></label>
+        <label>Они отдают город<select data-field="takeCity">${cityOptions(t, p.takeCity)}</select></label>
+        <label class="wide">Вассалитет<select data-field="vassal">${vassal}</select></label>
+      </div>
+      <div class="deal">${this.button('Предложить мир', { type: 'Propose', power, target: t, deal }, { blocker: f.ok ? null : 'Откажут' })}${f.html}</div>`;
+  }
+
+  private confirmWar(target: number): void {
+    const { state, power } = this.host;
+    const sides = warSides(state, power, target);
+    const name = (p: number) => state.powers[p].name;
+    const lines: string[] = [];
+    const others = sides.defenders.filter((d) => d !== target);
+    if (others.length) lines.push(`Вместе с ней — сюзерен и вассалы: ${others.map(name).join(', ')}.`);
+    if (sides.allies.length) lines.push(`На её стороне вступят союзники: ${sides.allies.map(name).join(', ')}.`);
+    if (sides.betrayed.length) {
+      const ev = diplomacyConfig.events;
+      lines.push(`Вы нарушите договор: ${name(target)} запомнит (${ev.betrayalVictim}), остальные знакомые — тоже (${ev.betrayalSeen} и сильнее, если вы сильнее их).`);
+    }
+    if (state.powers[target].character === 'trader') lines.push(`Война с торговцем портит отношения со всеми (${diplomacyConfig.events.attackedTrader}).`);
+    lines.push(`Мир возможен только по согласию; после него — перемирие ${diplomacyConfig.truceTurns} ходов.`);
+    showChoice(
+      `Объявить войну: ${name(target)}?`,
+      lines.join(' '),
+      [{ value: target, label: 'Объявить войну', description: `юниты и города державы ${name(target)} станут целями` }],
+      (t) => this.run({ type: 'DeclareWar', power, target: t }),
+    );
+  }
+}

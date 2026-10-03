@@ -4,7 +4,17 @@
 import { captureBlocker, captureCity, choiceBlocker, type CaptureChoice } from './capture';
 import { attackBlocker, resolveAttack } from './combat';
 import { balance, buildingDef, buildings, unitDef } from './data';
-import { hasMet, startWar, updateContacts } from './diplomacy';
+import {
+  cancelPact,
+  dealBlocker,
+  declareWar,
+  giftBlocker,
+  giveGift,
+  propose,
+  respond,
+  updateContacts,
+  warBlocker,
+} from './diplomacy';
 import { buildingPrice, citizenPrice, foundCityPrice, militaryPrice } from './economy';
 import { createCity, createUnit, log, removeUnit, spawnTile } from './entities';
 import { colOf, distance, inBounds, rowOf } from './hex';
@@ -12,18 +22,18 @@ import { computeNetwork } from './network';
 import { enterCost, findPath } from './pathfinding';
 import { moveTowards } from './movement';
 import {
-  atWar,
   cityAt,
   citySlots,
   findCity,
   findUnit,
   hasBuildingEffect,
+  hasPact,
   isLand,
   mapSize,
   unitAt,
 } from './state';
 import { advanceTurn } from './turn';
-import { MILITARY_TYPES, NONE, type GameState, type MilitaryType, type Unit } from './types';
+import { MILITARY_TYPES, NONE, type Deal, type GameState, type MilitaryType, type Unit } from './types';
 
 export type Command =
   | { type: 'Move'; power: number; unitId: number; target: number }
@@ -37,6 +47,11 @@ export type Command =
   | { type: 'Attack'; power: number; unitId: number; target: number }
   | { type: 'CaptureCity'; power: number; unitId: number; cityId: number; choice: CaptureChoice }
   | { type: 'DeclareWar'; power: number; target: number }
+  | { type: 'Gift'; power: number; target: number; gold: number }
+  | { type: 'CultureExchange'; power: number; target: number; culture: number }
+  | { type: 'Propose'; power: number; target: number; deal: Deal }
+  | { type: 'Respond'; power: number; proposalId: number; accept: boolean }
+  | { type: 'CancelPact'; power: number; target: number; kind: 'trade' | 'alliance' }
   | { type: 'EndTurn'; power: number };
 
 export type Validation = { ok: true } | { ok: false; reason: string };
@@ -174,11 +189,40 @@ export function validate(state: GameState, cmd: Command): Validation {
     }
 
     case 'DeclareWar': {
-      const target = state.powers[cmd.target];
-      if (!target || !target.alive) return fail('Такой державы нет');
-      if (cmd.target === cmd.power) return fail('Нельзя объявить войну себе');
-      if (!hasMet(state, cmd.power, cmd.target)) return fail('Вы ещё не встречались');
-      if (atWar(state, cmd.power, cmd.target)) return fail('Война уже идёт');
+      const blocker = warBlocker(state, cmd.power, cmd.target);
+      return blocker ? fail(blocker) : OK;
+    }
+
+    case 'Gift': {
+      const blocker = giftBlocker(state, cmd.power, cmd.target, cmd.gold, 'gold');
+      return blocker ? fail(blocker) : OK;
+    }
+
+    case 'CultureExchange': {
+      const blocker = giftBlocker(state, cmd.power, cmd.target, cmd.culture, 'culture');
+      return blocker ? fail(blocker) : OK;
+    }
+
+    case 'Propose': {
+      const blocker = dealBlocker(state, cmd.power, cmd.target, cmd.deal);
+      if (blocker) return fail(blocker);
+      const pending = state.proposals.some((p) => p.status === 'pending' && p.from === cmd.power && p.to === cmd.target && p.deal.kind === cmd.deal.kind);
+      return pending ? fail('Такое предложение уже ждёт ответа') : OK;
+    }
+
+    case 'Respond': {
+      const pr = state.proposals.find((p) => p.id === cmd.proposalId);
+      if (!pr || pr.to !== cmd.power) return fail('Предложение не найдено');
+      if (pr.status !== 'pending') return fail('На это предложение уже ответили');
+      if (!state.powers[pr.from].alive) return fail('Держава выбыла');
+      if (!cmd.accept) return OK;
+      const blocker = dealBlocker(state, pr.from, pr.to, pr.deal);
+      return blocker ? fail(`Уже невозможно: ${blocker.charAt(0).toLowerCase()}${blocker.slice(1)}`) : OK;
+    }
+
+    case 'CancelPact': {
+      if (!state.powers[cmd.target]) return fail('Такой державы нет');
+      if (!hasPact(state, cmd.power, cmd.target, cmd.kind)) return fail(cmd.kind === 'trade' ? 'Договора нет' : 'Союза нет');
       return OK;
     }
 
@@ -272,8 +316,27 @@ export function apply(state: GameState, cmd: Command): void {
       break;
 
     case 'DeclareWar':
-      startWar(state, cmd.power, cmd.target);
-      log(state, NONE, `Объявлена война: ${power.name} — ${state.powers[cmd.target].name}`);
+      declareWar(state, cmd.power, cmd.target);
+      break;
+
+    case 'Gift':
+      giveGift(state, cmd.power, cmd.target, cmd.gold, 'gold');
+      break;
+
+    case 'CultureExchange':
+      giveGift(state, cmd.power, cmd.target, cmd.culture, 'culture');
+      break;
+
+    case 'Propose':
+      propose(state, cmd.power, cmd.target, cmd.deal);
+      break;
+
+    case 'Respond':
+      respond(state, state.proposals.find((p) => p.id === cmd.proposalId)!, cmd.accept);
+      break;
+
+    case 'CancelPact':
+      cancelPact(state, cmd.power, cmd.target, cmd.kind);
       break;
 
     case 'EndTurn':

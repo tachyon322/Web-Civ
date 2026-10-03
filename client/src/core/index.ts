@@ -12,6 +12,18 @@ export * from './visibility';
 export * from './combat';
 export * from './capture';
 export * from './diplomacy';
+export * from './relations';
+export * from './text';
 export * from './deterrence';
 export { newGame, MAX_POWERS, type NewGameSettings } from './game';
-export { aiConfig, balance, buildings, characterDef, nations, terrainDefs, type BuildingDef } from './data';
+export {
+  aiConfig,
+  balance,
+  buildings,
+  characterDef,
+  diplomacyConfig,
+  diplomacyTraits,
+  nations,
+  terrainDefs,
+  type BuildingDef,
+} from './data';
