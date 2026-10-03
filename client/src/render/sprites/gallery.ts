@@ -2,7 +2,7 @@
 
 import { nations } from '../../core/data';
 import type { UnitType } from '../../core/types';
-import { drawUnitArt, hasUnitArt } from './art';
+import { ART_H, ART_W, drawUnitArt, hasUnitArt } from './art';
 import { citySvg } from './cities';
 import { unitSvg } from './units';
 
@@ -41,8 +41,8 @@ for (let epoch = 0; epoch < 5; epoch++) {
 out.innerHTML = html;
 for (const slot of out.querySelectorAll<HTMLElement>('.art')) {
   void drawUnitArt(slot.dataset.type as UnitType, Number(slot.dataset.epoch), slot.dataset.color!).then((canvas) => {
-    canvas.style.width = `${72 * scale}px`;
-    canvas.style.height = `${64 * scale}px`;
+    canvas.style.width = `${ART_W * scale}px`;
+    canvas.style.height = `${ART_H * scale}px`;
     slot.replaceWith(canvas);
   });
 }

@@ -23,7 +23,7 @@ import {
 } from '../core/types';
 import { EDGE_CORNERS, HEX_SIZE, TILT, hexCorners, pixelToTile, tileCenter, worldSize } from './layout';
 import { darken, hexColor, palette } from './palette';
-import { drawUnitArt, hasUnitArt } from './sprites/art';
+import { ART_ANCHOR, ART_H, ART_W, drawUnitArt, hasUnitArt, unitArtHeight } from './sprites/art';
 import { SpriteCache } from './sprites/cache';
 import { CITY_ANCHOR, CITY_SPRITE_H, CITY_SPRITE_W, citySvg } from './sprites/cities';
 import { UNIT_ANCHOR, UNIT_SPRITE_H, UNIT_SPRITE_W, figuresForLevel, unitSvg } from './sprites/units';
@@ -771,9 +771,10 @@ export class MapRenderer {
     const epoch = epochOf(owner);
     const enemy = atWar(state, state.humanPower, unit.owner);
     const figures = figuresForLevel(unit.type, unit.level);
+    const art = hasUnitArt(unit.type);
     const texture = this.simple
       ? null
-      : hasUnitArt(unit.type)
+      : art
         ? this.sprites.getDrawn(`ua|${unit.type}|${epoch}|${owner.color}`, () => drawUnitArt(unit.type, epoch, owner.color))
         : this.sprites.get(`u|${unit.type}|${epoch}|${owner.color}|${figures}`, UNIT_SPRITE_W, UNIT_SPRITE_H, () =>
             unitSvg(unit.type, epoch, owner.color, figures),
@@ -791,17 +792,18 @@ export class MapRenderer {
       let sprite = this.unitPool[used];
       if (!sprite) {
         sprite = new Sprite();
-        sprite.anchor.set(UNIT_ANCHOR.x / UNIT_SPRITE_W, UNIT_ANCHOR.y / UNIT_SPRITE_H);
         sprite.scale.set(UNIT_SCALE);
         this.unitPool.push(sprite);
         this.unitSprites.addChild(sprite);
       }
       sprite.texture = texture;
+      if (art) sprite.anchor.set(ART_ANCHOR.x / ART_W, ART_ANCHOR.y / ART_H);
+      else sprite.anchor.set(UNIT_ANCHOR.x / UNIT_SPRITE_W, UNIT_ANCHOR.y / UNIT_SPRITE_H);
       sprite.position.set(bx, by);
       sprite.visible = true;
       used++;
       cx = bx;
-      top = by - 50 * UNIT_SCALE;
+      top = by - (art ? unitArtHeight(unit.type) + 2 : 50) * UNIT_SCALE;
       bottom = by + 5 * UNIT_SCALE;
     } else {
       const ux = onCity ? x - 15 : x;
