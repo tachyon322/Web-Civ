@@ -2,6 +2,7 @@
 
 import { nations } from '../../core/data';
 import type { UnitType } from '../../core/types';
+import { drawUnitArt, hasUnitArt } from './art';
 import { citySvg } from './cities';
 import { unitSvg } from './units';
 
@@ -14,8 +15,16 @@ function img(svg: string, w: number, h: number): string {
 
 const types: UnitType[] = ['citizen', 'warrior', 'archer', 'horseman'];
 const colors = nations.slice(0, 4).map((n) => n.color);
-let html = '<h2>Юниты: эпохи 0–4, отряды 1–3 фигуры</h2>';
+let html = '<h2>Юниты: эпохи 0–4 (рисованные — по одному цвету на ряд), SVG — отряды 1–3 фигуры</h2>';
 for (const type of types) {
+  if (hasUnitArt(type)) {
+    for (const color of colors) {
+      html += `<div class="row"><span>${type} (арт)</span>`;
+      for (let epoch = 0; epoch < 5; epoch++) html += `<span class="art" data-type="${type}" data-epoch="${epoch}" data-color="${color}"></span>`;
+      html += '</div>';
+    }
+    continue;
+  }
   for (const figures of [1, 3]) {
     html += `<div class="row"><span>${type} ×${figures}</span>`;
     for (let epoch = 0; epoch < 5; epoch++) html += img(unitSvg(type, epoch, colors[epoch % colors.length], figures), 72, 64);
@@ -30,3 +39,10 @@ for (let epoch = 0; epoch < 5; epoch++) {
   html += '</div>';
 }
 out.innerHTML = html;
+for (const slot of out.querySelectorAll<HTMLElement>('.art')) {
+  void drawUnitArt(slot.dataset.type as UnitType, Number(slot.dataset.epoch), slot.dataset.color!).then((canvas) => {
+    canvas.style.width = `${72 * scale}px`;
+    canvas.style.height = `${64 * scale}px`;
+    slot.replaceWith(canvas);
+  });
+}

@@ -1,11 +1,11 @@
 // Текстуры спрайтов: SVG растрируется в canvas с запасом по разрешению (для приближения)
-// при первом запросе и кэшируется по ключу. Пока текстура грузится, get() возвращает null —
+// при первом запросе и кэшируется по ключу; рисованные спрайты приходят готовым canvas. Пока текстура грузится, get() возвращает null —
 // отрисовка показывает упрощённую фишку и перерисовывается, когда текстура готова.
 
 import { CanvasSource, Texture } from 'pixi.js';
 
 /** Во сколько раз растр крупнее логического размера спрайта. */
-const RESOLUTION = 3;
+export const RESOLUTION = 3;
 
 export class SpriteCache {
   private textures = new Map<string, Texture | null>();
@@ -14,22 +14,21 @@ export class SpriteCache {
   onLoad: (() => void) | null = null;
 
   get(key: string, width: number, height: number, svg: () => string): Texture | null {
+    return this.getDrawn(key, () => rasterize(svg(), width, height));
+  }
+
+  /** Текстура из canvas, который рисует draw (размер — логический × RESOLUTION). */
+  getDrawn(key: string, draw: () => Promise<HTMLCanvasElement>): Texture | null {
     const cached = this.textures.get(key);
     if (cached !== undefined) return cached;
     this.textures.set(key, null);
-    void this.load(key, width, height, svg());
+    void this.load(key, draw);
     return null;
   }
 
-  private async load(key: string, width: number, height: number, svg: string): Promise<void> {
+  private async load(key: string, draw: () => Promise<HTMLCanvasElement>): Promise<void> {
     try {
-      const img = new Image();
-      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-      await img.decode();
-      const canvas = document.createElement('canvas');
-      canvas.width = width * RESOLUTION;
-      canvas.height = height * RESOLUTION;
-      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const canvas = await draw();
       const source = new CanvasSource({ resource: canvas, resolution: RESOLUTION, autoGenerateMipmaps: true, scaleMode: 'linear' });
       this.textures.set(key, new Texture({ source }));
     } catch (err) {
@@ -43,4 +42,15 @@ export class SpriteCache {
       this.onLoad?.();
     });
   }
+}
+
+async function rasterize(svg: string, width: number, height: number): Promise<HTMLCanvasElement> {
+  const img = new Image();
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  await img.decode();
+  const canvas = document.createElement('canvas');
+  canvas.width = width * RESOLUTION;
+  canvas.height = height * RESOLUTION;
+  canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas;
 }

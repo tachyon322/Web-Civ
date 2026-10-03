@@ -263,14 +263,24 @@ function place(x: number, y: number, s: number, body: string): string {
   return `<g transform="translate(${x} ${y}) scale(${s})">${body}</g>`;
 }
 
-/** SVG юнита: тип, эпоха владельца, цвет нации, число фигур. */
-export function unitSvg(type: UnitType, epoch: number, color: string, figures: number): string {
-  const n = Math.max(1, Math.min(3, figures));
-  const base = `
+/** Подставка в цвет нации с тенью — общая для SVG-фигурок и рисованных спрайтов. */
+function podium(color: string): string {
+  return `
     <ellipse cx="38" cy="58.4" rx="21" ry="5.6" fill="#000" opacity="0.3"/>
     <ellipse cx="36" cy="57" rx="20" ry="5.6" fill="${shade(color, 0.55)}" ${stroke()}/>
     <ellipse cx="36" cy="55.8" rx="20" ry="5.4" fill="${color}" ${stroke()}/>
     <ellipse cx="33" cy="54.6" rx="11" ry="2.2" fill="#fff" opacity="0.18"/>`;
+}
+
+/** Только подставка — под рисованную фигуру. */
+export function podiumSvg(color: string): string {
+  return svgDoc(UNIT_SPRITE_W, UNIT_SPRITE_H, podium(color));
+}
+
+/** SVG юнита: тип, эпоха владельца, цвет нации, число фигур. */
+export function unitSvg(type: UnitType, epoch: number, color: string, figures: number): string {
+  const n = Math.max(1, Math.min(3, figures));
+  const base = podium(color);
   let body = '';
   if (type === 'horseman') {
     for (const [x, y, s] of HORSE_FORMATIONS[n]) body += place(x, y, s, horse(epoch, color) + rider(epoch, color));

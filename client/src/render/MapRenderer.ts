@@ -23,6 +23,7 @@ import {
 } from '../core/types';
 import { EDGE_CORNERS, HEX_SIZE, TILT, hexCorners, pixelToTile, tileCenter, worldSize } from './layout';
 import { darken, hexColor, palette } from './palette';
+import { drawUnitArt, hasUnitArt } from './sprites/art';
 import { SpriteCache } from './sprites/cache';
 import { CITY_ANCHOR, CITY_SPRITE_H, CITY_SPRITE_W, citySvg } from './sprites/cities';
 import { UNIT_ANCHOR, UNIT_SPRITE_H, UNIT_SPRITE_W, figuresForLevel, unitSvg } from './sprites/units';
@@ -772,9 +773,11 @@ export class MapRenderer {
     const figures = figuresForLevel(unit.type, unit.level);
     const texture = this.simple
       ? null
-      : this.sprites.get(`u|${unit.type}|${epoch}|${owner.color}|${figures}`, UNIT_SPRITE_W, UNIT_SPRITE_H, () =>
-          unitSvg(unit.type, epoch, owner.color, figures),
-        );
+      : hasUnitArt(unit.type)
+        ? this.sprites.getDrawn(`ua|${unit.type}|${epoch}|${owner.color}`, () => drawUnitArt(unit.type, epoch, owner.color))
+        : this.sprites.get(`u|${unit.type}|${epoch}|${owner.color}|${figures}`, UNIT_SPRITE_W, UNIT_SPRITE_H, () =>
+            unitSvg(unit.type, epoch, owner.color, figures),
+          );
 
     let cx: number; // центр значков по горизонтали
     let top: number; // верх фигуры — над ним точки уровня
