@@ -1,0 +1,26 @@
+{
+  "water": {
+    "name": "Вода",
+    "land": false,
+    "moveCost": 1,
+    "defenseBonus": 0
+  },
+  "plains": {
+    "name": "Равнина",
+    "land": true,
+    "moveCost": 1,
+    "defenseBonus": 0
+  },
+  "rough": {
+    "name": "Пересечённая",
+    "land": true,
+    "moveCost": 2,
+    "defenseBonus": 0.25
+  },
+  "mountain": {
+    "name": "Горы",
+    "land": true,
+    "moveCost": null,
+    "defenseBonus": 0
+  }
+}

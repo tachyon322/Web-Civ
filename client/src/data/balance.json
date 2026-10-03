@@ -1,0 +1,186 @@
+{
+  "city": {
+    "maxLevel": 5,
+    "growthToNextLevel": [
+      20,
+      40,
+      70,
+      110
+    ],
+    "slots": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "tileLimit": [
+      7,
+      10,
+      13,
+      16,
+      19
+    ],
+    "goldByLevel": [
+      3,
+      4,
+      5,
+      6,
+      8
+    ],
+    "sciencePerCity": 1,
+    "growthPerLandTile": 1,
+    "foundRadius": 1,
+    "minDistanceBetweenCities": 3
+  },
+  "prices": {
+    "citizen": 12,
+    "foundCityBase": 25,
+    "foundCityStep": 15
+  },
+  "start": {
+    "gold": 40,
+    "citizens": 2
+  },
+  "units": {
+    "citizen": {
+      "name": "Житель",
+      "mp": 4,
+      "military": false,
+      "range": 1,
+      "canCapture": false
+    },
+    "warrior": {
+      "name": "Воин",
+      "mp": 4,
+      "military": true,
+      "range": 1,
+      "canCapture": true
+    },
+    "archer": {
+      "name": "Лучник",
+      "mp": 4,
+      "military": true,
+      "range": 2,
+      "canCapture": false
+    },
+    "horseman": {
+      "name": "Всадник",
+      "mp": 6,
+      "military": true,
+      "range": 1,
+      "canCapture": true
+    },
+    "maxLevel": 4,
+    "ownTerritoryMpBonus": 1,
+    "upkeepPerPerson": 1,
+    "boughtUnitsCanMove": true,
+    "transferCost": 1,
+    "barracksLevel": 2,
+    "barracksPriceInCitizens": 2
+  },
+  "vision": {
+    "unit": 2,
+    "city": 2,
+    "territory": 1
+  },
+  "specials": {
+    "gold": {
+      "gold": 3
+    },
+    "marble": {
+      "culture": 2
+    },
+    "ruins": {
+      "science": 2
+    }
+  },
+  "combat": {
+    "outcomes": [
+      {
+        "ratio": 0.5,
+        "defenderLoss": 0.25,
+        "attackerLoss": 0.5
+      },
+      {
+        "ratio": 0.667,
+        "defenderLoss": 0.35,
+        "attackerLoss": 0.4
+      },
+      {
+        "ratio": 1,
+        "defenderLoss": 0.5,
+        "attackerLoss": 0.25
+      },
+      {
+        "ratio": 1.5,
+        "defenderLoss": 0.75,
+        "attackerLoss": 0.15
+      },
+      {
+        "ratio": 2,
+        "defenderLoss": 1,
+        "attackerLoss": 0.1
+      }
+    ],
+    "counters": {
+      "warrior": "horseman",
+      "horseman": "archer",
+      "archer": "warrior"
+    },
+    "counterBonus": 0.5,
+    "fortifiedBonus": 0.25,
+    "starBonus": 0.1,
+    "maxStars": 3,
+    "archerVsCityBonus": 0.5,
+    "onWaterDefenseMultiplier": 0.5,
+    "attackEndsTurn": true,
+    "strengthStep": 0.1
+  },
+  "upkeep": {
+    "supplyLossShare": 0.1,
+    "debtLossShare": 0.1
+  },
+  "recovery": {
+    "ownTerritoryShare": 0.25,
+    "cityShare": 0.5
+  },
+  "cityDefense": {
+    "durabilityBase": 2,
+    "durabilityRegen": 1,
+    "strengthPerLevel": 1,
+    "capitalStrengthBonus": 1
+  },
+  "capture": {
+    "plunderGoldByLevel": [
+      10,
+      40,
+      70,
+      100,
+      130
+    ],
+    "plunderYieldTurns": 5,
+    "plunderCooldownTurns": 10
+  },
+  "movement": {
+    "embarkEndsMove": true
+  },
+  "difficulty": {
+    "easy": {
+      "name": "Лёгкая",
+      "botIncomeBonus": -0.2
+    },
+    "normal": {
+      "name": "Нормальная",
+      "botIncomeBonus": 0
+    },
+    "hard": {
+      "name": "Сложная",
+      "botIncomeBonus": 0.25
+    }
+  },
+  "deterrence": {
+    "armyWeight": 1,
+    "cityWeight": 0.25
+  }
+}

@@ -1,0 +1,47 @@
+[
+  {
+    "id": "market",
+    "name": "Рынок",
+    "basePrice": 30,
+    "priceStep": 15,
+    "yields": {
+      "gold": 2
+    }
+  },
+  {
+    "id": "library",
+    "name": "Библиотека",
+    "basePrice": 30,
+    "priceStep": 15,
+    "yields": {
+      "science": 2
+    }
+  },
+  {
+    "id": "temple",
+    "name": "Храм",
+    "basePrice": 30,
+    "priceStep": 15,
+    "yields": {
+      "culture": 2
+    }
+  },
+  {
+    "id": "barracks",
+    "name": "Казармы",
+    "basePrice": 40,
+    "priceStep": 20,
+    "yields": {},
+    "effect": "barracks"
+  },
+  {
+    "id": "walls",
+    "name": "Стены",
+    "basePrice": 35,
+    "priceStep": 15,
+    "yields": {},
+    "effect": "walls",
+    "durability": 1,
+    "strength": 1
+  }
+]

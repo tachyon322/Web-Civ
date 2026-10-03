@@ -1,0 +1,87 @@
+{
+  "turnBudgetMs": 2000,
+  "tendencyChance": 0.5,
+  "characters": {
+    "aggressor": {
+      "name": "Агрессор",
+      "description": "уважает только силу, нападает на слабых",
+      "warRatio": 1,
+      "armyPerCity": 2,
+      "armyIncomeShare": 0.5,
+      "armyIncomeShareRich": 0.85,
+      "expansion": 1,
+      "buildings": { "market": 1, "library": 0.7, "temple": 0.6, "barracks": 1.4, "walls": 0.8 },
+      "unitShares": { "warrior": 0.45, "archer": 0.25, "horseman": 0.3 },
+      "capture": "annex"
+    },
+    "trader": {
+      "name": "Торговец",
+      "description": "любит золото и договоры, не любит войны",
+      "warRatio": 1.8,
+      "armyPerCity": 1,
+      "armyIncomeShare": 0.2,
+      "armyIncomeShareRich": 0.25,
+      "expansion": 1,
+      "buildings": { "market": 1.6, "library": 0.9, "temple": 0.8, "barracks": 0.5, "walls": 0.9 },
+      "unitShares": { "warrior": 0.5, "archer": 0.35, "horseman": 0.15 },
+      "capture": "plunder"
+    },
+    "diplomat": {
+      "name": "Дипломат",
+      "description": "ищет союзы, ценит культуру",
+      "warRatio": 1.6,
+      "armyPerCity": 1,
+      "armyIncomeShare": 0.25,
+      "armyIncomeShareRich": 0.3,
+      "expansion": 1,
+      "buildings": { "market": 1, "library": 0.9, "temple": 1.6, "barracks": 0.5, "walls": 0.9 },
+      "unitShares": { "warrior": 0.5, "archer": 0.35, "horseman": 0.15 },
+      "capture": "liberate"
+    },
+    "isolationist": {
+      "name": "Изоляционист",
+      "description": "держится в стороне, крепит оборону",
+      "warRatio": 2,
+      "armyPerCity": 1.5,
+      "armyIncomeShare": 0.35,
+      "armyIncomeShareRich": 0.5,
+      "expansion": 0.8,
+      "buildings": { "market": 0.9, "library": 1.6, "temple": 0.9, "barracks": 0.6, "walls": 1.4 },
+      "unitShares": { "warrior": 0.45, "archer": 0.45, "horseman": 0.1 },
+      "capture": "annex"
+    }
+  },
+  "difficulty": {
+    "easy": { "warRatioFactor": 1.25 },
+    "normal": { "warRatioFactor": 1 },
+    "hard": { "warRatioFactor": 0.8 }
+  },
+  "war": {
+    "minTurn": 20,
+    "minArmy": 4,
+    "reach": 10,
+    "maxOffensiveWars": 1,
+    "busyTargetDiscount": 0.3
+  },
+  "economy": {
+    "minIncomeAfterPurchase": 1,
+    "citizensPerCity": 1,
+    "extraCitizens": 1,
+    "stockpile": 150
+  },
+  "settle": {
+    "searchRadius": 9,
+    "siteRadius": 2,
+    "specialScore": 3,
+    "minScore": 7,
+    "foreignCityDistance": 4,
+    "distancePenalty": 0.6
+  },
+  "military": {
+    "retreatShare": 0.4,
+    "threatRadius": 3,
+    "mergeMaxLevel": 2,
+    "assaultRatio": 1.5,
+    "attackValueMin": 0
+  }
+}

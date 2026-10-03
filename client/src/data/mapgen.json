@@ -1,0 +1,39 @@
+{
+  "baseWidth": 60,
+  "baseHeight": 40,
+  "basePowers": 12,
+  "minWidth": 32,
+  "minHeight": 22,
+  "landShare": 0.5,
+  "noiseScale": 0.09,
+  "roughShare": 0.28,
+  "ridgesPerPower": 0.6,
+  "ridgeLength": [
+    12,
+    22
+  ],
+  "passEvery": [
+    5,
+    7
+  ],
+  "islands": [
+    4,
+    7
+  ],
+  "islandSize": [
+    4,
+    12
+  ],
+  "startClearRadius": 2,
+  "startRoughInRing2": 3,
+  "specialsPerPower": 2,
+  "specialDistance": 3,
+  "placementAttempts": 300,
+  "mapAttempts": 20,
+  "ridgeThickness": 0.45,
+  "passWidth": [
+    1,
+    2
+  ],
+  "roughNoiseScale": 0.35
+}
