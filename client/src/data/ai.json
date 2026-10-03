@@ -3,7 +3,7 @@
   "tendencyChance": 0.5,
   "characters": {
     "aggressor": {
-      "warOpinionMax": 30, "breaksTreaties": true, "gifts": false, "demandsTribute": true, "seeksUnion": false,
+      "wonders": 0.5, "warOpinionMax": 30, "breaksTreaties": true, "gifts": false, "demandsTribute": true, "seeksUnion": false,
       "name": "Агрессор",
       "description": "уважает только силу, нападает на слабых",
       "warRatio": 1,
@@ -16,7 +16,7 @@
       "capture": "annex"
     },
     "trader": {
-      "warOpinionMax": 0, "breaksTreaties": false, "gifts": true, "demandsTribute": false, "seeksUnion": false,
+      "wonders": 0.8, "warOpinionMax": 0, "breaksTreaties": false, "gifts": true, "demandsTribute": false, "seeksUnion": false,
       "name": "Торговец",
       "description": "любит золото и договоры, не любит войны",
       "warRatio": 1.8,
@@ -29,7 +29,7 @@
       "capture": "plunder"
     },
     "diplomat": {
-      "warOpinionMax": -10, "breaksTreaties": false, "gifts": true, "demandsTribute": false, "seeksUnion": true,
+      "wonders": 1.5, "warOpinionMax": -10, "breaksTreaties": false, "gifts": true, "demandsTribute": false, "seeksUnion": true,
       "name": "Дипломат",
       "description": "ищет союзы, ценит культуру",
       "warRatio": 1.6,
@@ -42,7 +42,7 @@
       "capture": "liberate"
     },
     "isolationist": {
-      "warOpinionMax": 0, "breaksTreaties": false, "gifts": false, "demandsTribute": false, "seeksUnion": false,
+      "wonders": 1.2, "warOpinionMax": 0, "breaksTreaties": false, "gifts": false, "demandsTribute": false, "seeksUnion": false,
       "name": "Изоляционист",
       "description": "держится в стороне, крепит оборону",
       "warRatio": 2,
@@ -84,6 +84,18 @@
     "cancelTradeBelow": -30,
     "cancelAllianceBelow": 10,
     "leaderWarFactor": 0.6
+  },
+  "paths": {
+    "minStabilityToExpand": 45,
+    "warStabilityMin": 45,
+    "holidayBelow": 40,
+    "plunderBelow": 40,
+    "templeBoost": 60,
+    "wonderPriority": 4,
+    "wonderSaveWeight": 1.2,
+    "convertReserve": 30,
+    "propagandaReserve": 50,
+    "deterrentReserve": 1.5
   },
   "economy": {
     "minIncomeAfterPurchase": 1,

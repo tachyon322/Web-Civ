@@ -32,7 +32,7 @@ export function showNewGameDialog(onStart: (settings: GameSettings) => void, can
       <button class="start" id="ng-start">Начать</button>
       ${canCancel ? '<button class="start" id="ng-cancel" style="background:var(--btn)">Отмена</button>' : ''}
       <div class="hint">ЛКМ — выбрать, ПКМ — идти или перебросить, колесо — масштаб, перетаскивание — сдвиг карты.
-      Enter — завершить ход, F — основать город, N — следующий юнит, D — дипломатия, Esc — снять выбор.</div>
+      Enter — завершить ход, F — основать город, N — следующий юнит, D — дипломатия, P — пути (эпоха, стабильность, способности, победы), Esc — снять выбор.</div>
     </div>`;
   document.body.appendChild(backdrop);
   const $ = <T extends HTMLElement>(id: string) => backdrop.querySelector<T>(`#${id}`)!;

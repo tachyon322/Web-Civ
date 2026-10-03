@@ -669,3 +669,65 @@ body.no-game #forecast {
     grid-template-columns: 1fr;
   }
 }
+
+/* Окно «Пути» */
+.modal.paths .columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  overflow-y: auto;
+}
+
+.paths .bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 2px 0 6px;
+}
+
+.paths .bar > div {
+  height: 100%;
+  background: var(--science);
+}
+
+.paths .levels .row.current {
+  color: var(--accent);
+}
+
+.paths .ability {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.paths table.victory {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.paths table.victory th,
+.paths table.victory td {
+  text-align: left;
+  padding: 3px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.paths table.victory th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+#topbar .stability.bad b {
+  color: var(--bad);
+}
+
+@media (max-width: 720px) {
+  .modal.paths .columns {
+    grid-template-columns: 1fr;
+  }
+}

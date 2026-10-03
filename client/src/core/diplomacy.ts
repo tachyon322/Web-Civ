@@ -1,8 +1,9 @@
 // Дипломатия: встречи, объявление войны (с союзниками и вассалами), подарки, сделки и их оценка.
 // Ответ бота считается той же функцией, что и прогноз в интерфейсе, поэтому отказ всегда объясним.
 
+import { deterrentStrike } from './abilities';
 import { transferCity } from './capture';
-import { characterDef, diplomacyConfig, diplomacyTraits } from './data';
+import { characterDef, diplomacyConfig, diplomacyTraits, pathsConfig } from './data';
 import { computeIncome, grossGold, type Breakdown } from './economy';
 import { log } from './entities';
 import { range } from './hex';
@@ -134,7 +135,7 @@ export function declareWar(state: GameState, a: number, b: number): WarSides {
   const sides = warSides(state, a, b);
   const ev = cfg.events;
   for (const x of sides.attackers) {
-    for (const y of [...sides.defenders, ...sides.allies]) if (!atWar(state, x, y)) startWar(state, x, y);
+    for (const y of [...sides.defenders, ...sides.allies]) if (!atWar(state, x, y)) startWar(state, x, y, a);
   }
   const pa = state.powers[a];
   if (sides.betrayed.length) {
@@ -156,12 +157,15 @@ export function declareWar(state: GameState, a: number, b: number): WarSides {
     }
   }
   const pb = state.powers[b];
+  // Оружие сдерживания: нападение означает сокрушительный удар по столице агрессора.
+  const armed = [...sides.defenders, ...sides.allies].find((d) => state.powers[d].deterrent);
   logPublic(state, [a, b], `Объявлена война: ${pa.name} — ${pb.name}${sides.betrayed.length ? ' (нарушен договор)' : ''}`);
   const head = principalOf(state, b);
   if (head !== b) logPublic(state, [head, a], `${state.powers[head].name} вступает в войну за своего вассала ${pb.name}`);
   for (const x of sides.allies) {
     logPublic(state, [x, a], `${state.powers[x].name} вступает в войну с державой ${pa.name} на стороне союзника`);
   }
+  if (armed !== undefined) deterrentStrike(state, a, armed);
   return sides;
 }
 
@@ -178,7 +182,9 @@ export function vassalize(state: GameState, vassal: number, suzerain: number): v
   pv.suzerain = suzerain;
   state.pacts = state.pacts.filter((p) => !(p.kind === 'alliance' && (p.a === vassal || p.b === vassal)));
   for (const w of [...pv.wars]) if (!atWar(state, suzerain, w)) endWar(state, vassal, w);
-  for (const w of state.powers[suzerain].wars) if (w !== vassal && !atWar(state, vassal, w)) startWar(state, vassal, w);
+  for (const w of state.powers[suzerain].wars) {
+    if (w !== vassal && !atWar(state, vassal, w)) startWar(state, vassal, w, findPact(state, suzerain, w, 'war')?.by);
+  }
   logPublic(state, [vassal, suzerain], `${pv.name} становится вассалом державы ${state.powers[suzerain].name}`);
 }
 
@@ -305,6 +311,7 @@ const DEAL_NAMES: Record<Deal['kind'], string> = {
   joinWar: 'вступить в войну',
   tribute: 'дань',
   peace: 'мир',
+  callPeace: 'призыв к миру',
 };
 
 /** Описание сделки с точки зрения предлагающего. */
@@ -322,6 +329,8 @@ export function dealText(state: GameState, from: number, to: number, deal: Deal)
       return `дань ${deal.gold} золота`;
     case 'peace':
       return `мир${termsText(state, from, to, deal.terms)}`;
+    case 'callPeace':
+      return `призыв к миру: прекратить войну с державой ${name(deal.victim)}`;
   }
 }
 
@@ -423,6 +432,16 @@ export function dealBlocker(state: GameState, from: number, to: number, deal: De
         if (t.vassal !== from && t.vassal !== to) return 'Вассалом может стать только одна из сторон';
         if (vassalsOf(state, t.vassal).length) return 'У будущего вассала есть свои вассалы';
       }
+      return null;
+    }
+
+    case 'callPeace': {
+      const v = deal.victim;
+      if (!state.powers[v]?.alive) return 'Такой державы нет';
+      if (!atWar(state, to, v)) return `${name(to)} не воюет с державой ${name(v)}`;
+      if (findPact(state, to, v, 'war')?.by !== to) return `Войну начал не ${name(to)}`;
+      if (pt.suzerain !== NONE) return `Призыв обращают к сюзерену — ${name(pt.suzerain)}`;
+      if (state.powers[v].suzerain !== NONE) return `Мир за вассала заключает ${name(state.powers[v].suzerain)}`;
       return null;
     }
   }
@@ -530,7 +549,16 @@ export function evaluateDeal(state: GameState, from: number, to: number, deal: D
       if (take) add(b, `Отдаём город ${take.name}`, take.level * d.peaceCityGivePerLevel);
       if (t.vassal === to) add(b, 'Становимся вассалом', d.peaceBecomeVassal);
       if (t.vassal === from) add(b, 'Они становятся нашим вассалом', d.peaceGetVassal);
+      if (pt.stability < d.peaceUnrestBelow) add(b, 'Недовольство в стране', d.peaceUnrest);
       add(b, charLabel, traits.peace);
+      break;
+    }
+
+    case 'callPeace': {
+      // Тот же счёт, что и для мира без условий с жертвой, плюс давление мирового мнения.
+      const peace = evaluateDeal(state, deal.victim, to, { kind: 'peace', terms: NO_TERMS });
+      for (const i of peace.items) add(b, i.label, i.value);
+      add(b, 'Призыв к миру', pathsConfig.abilities.callPeace.bonus);
       break;
     }
   }
@@ -607,6 +635,11 @@ export function enactDeal(state: GameState, from: number, to: number, deal: Deal
       if (t.vassal === to) vassalize(state, to, from);
       break;
     }
+
+    case 'callPeace':
+      makePeace(state, to, deal.victim);
+      logPublic(state, [to, deal.victim, from], `${pt.name} слушает призыв к миру и прекращает войну с державой ${state.powers[deal.victim].name}`);
+      break;
   }
 }
 
@@ -617,6 +650,13 @@ export function declineDeal(state: GameState, from: number, to: number, deal: De
   if (deal.kind === 'tribute') {
     remember(state, to, from, 'tributeDemanded', cfg.events.tributeDemanded);
     remember(state, from, to, 'tributeRefused', cfg.events.tributeRefused);
+  }
+  if (deal.kind === 'callPeace') {
+    // Отказ от призыва к миру портит отношения со всеми, кто знаком с агрессором.
+    for (const o of state.powers) {
+      if (o.alive && o.id !== to && o.met.includes(to)) remember(state, o.id, to, 'refusedPeace', pathsConfig.abilities.callPeace.refusal);
+    }
+    logPublic(state, [to, from, deal.victim], `${pt.name} отвергает призыв к миру — это запомнят все`);
   }
   log(state, from, `${pt.name} отклоняет: ${dealText(state, from, to, deal)}${reason ? `. ${reason}` : ''}`);
   if (!pt.isHuman) return;
@@ -700,7 +740,9 @@ export function diplomacyNewTurn(state: GameState): void {
   for (const p of state.powers) {
     if (!p.alive || p.suzerain === NONE) continue;
     const s = p.suzerain;
-    if (strengthOf(state, p.id) <= strengthOf(state, s)) continue;
+    // Вассал восстаёт, если сюзерен ослаб: вассал сильнее его или стабильность сюзерена низкая.
+    const weak = state.powers[s].stability < pathsConfig.stability.vassalRevoltBelow;
+    if (strengthOf(state, p.id) <= strengthOf(state, s) && !weak) continue;
     p.suzerain = NONE;
     remember(state, s, p.id, 'rebellion', cfg.events.rebellion);
     logPublic(state, [p.id, s], `${p.name} восстаёт и освобождается от власти державы ${state.powers[s].name}`);
@@ -709,7 +751,7 @@ export function diplomacyNewTurn(state: GameState): void {
   if (leader !== state.coalitionLeader) {
     if (leader !== NONE) {
       const name = state.powers[leader].name;
-      log(state, NONE, `${name} близка к победе завоеванием: против неё собирается коалиция`);
+      log(state, NONE, `${name} близка к победе: против неё собирается коалиция`);
     } else if (state.coalitionLeader !== NONE) {
       log(state, NONE, `Угроза победы державы ${state.powers[state.coalitionLeader].name} миновала`);
     }

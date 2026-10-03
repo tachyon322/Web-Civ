@@ -20,6 +20,11 @@ export function computeVisible(state: GameState, power: number, shared = true): 
   for (const c of state.cities) if (eyes[c.owner]) mark(c.tile, balance.vision.city);
   const { owner } = state.territory;
   for (let t = 0; t < owner.length; t++) if (owner[t] !== -1 && eyes[owner[t]]) mark(t, balance.vision.territory);
+  // Разведка: видны все юниты выбранной державы.
+  for (const e of state.powers[power].effects) {
+    if (e.kind !== 'recon' || e.until <= state.turn) continue;
+    for (const u of state.units) if (u.owner === e.target) visible[u.tile] = 1;
+  }
   return visible;
 }
 

@@ -23,7 +23,6 @@ import { enterCost, findPath } from './pathfinding';
 import { moveTowards } from './movement';
 import {
   cityAt,
-  citySlots,
   findCity,
   findUnit,
   hasBuildingEffect,
@@ -33,7 +32,12 @@ import {
   unitAt,
 } from './state';
 import { advanceTurn } from './turn';
-import { MILITARY_TYPES, NONE, type Deal, type GameState, type MilitaryType, type Unit } from './types';
+import { abilityBlocker, useAbility, type AbilityUse } from './abilities';
+import { addBuilding, buildingBlocker } from './buildings';
+import { epochMpBonus } from './epochs';
+import { refreshAllStability, refreshStability } from './stability';
+import { MILITARY_TYPES, NONE, type Deal, type GameState, type MilitaryType, type ProjectKind, type Unit } from './types';
+import { buyProjectStage, checkVictory, projectBlocker } from './victory';
 
 export type Command =
   | { type: 'Move'; power: number; unitId: number; target: number }
@@ -52,6 +56,8 @@ export type Command =
   | { type: 'Propose'; power: number; target: number; deal: Deal }
   | { type: 'Respond'; power: number; proposalId: number; accept: boolean }
   | { type: 'CancelPact'; power: number; target: number; kind: 'trade' | 'alliance' }
+  | ({ type: 'UseAbility'; power: number } & AbilityUse)
+  | { type: 'BuyProjectStage'; power: number; cityId: number; kind: ProjectKind }
   | { type: 'EndTurn'; power: number };
 
 export type Validation = { ok: true } | { ok: false; reason: string };
@@ -68,6 +74,7 @@ function ownUnit(state: GameState, power: number, unitId: number): Unit | string
 
 export function validate(state: GameState, cmd: Command): Validation {
   const power = state.powers[cmd.power];
+  if (state.winner) return fail('Партия окончена');
   if (!power || !power.alive) return fail('Держава выбыла');
 
   switch (cmd.type) {
@@ -139,9 +146,9 @@ export function validate(state: GameState, cmd: Command): Validation {
       if (!city || city.owner !== cmd.power) return fail('Это не ваш город');
       if (!buildings.some((b) => b.id === cmd.buildingId)) return fail('Неизвестное здание');
       if (city.purchasedThisTurn) return fail('В этом городе уже была покупка в этом ходу');
-      if (city.buildings.includes(cmd.buildingId)) return fail('Здание уже построено');
-      if (city.buildings.length >= citySlots(city)) return fail('Нет свободных слотов');
-      const price = buildingPrice(state, cmd.power, cmd.buildingId);
+      const blocker = buildingBlocker(state, cmd.power, city, buildingDef(cmd.buildingId));
+      if (blocker) return fail(blocker);
+      const price = buildingPrice(state, cmd.power, cmd.buildingId, city);
       if (power.gold < price) return fail(`Нужно ${price} золота`);
       return OK;
     }
@@ -220,6 +227,16 @@ export function validate(state: GameState, cmd: Command): Validation {
       return blocker ? fail(`Уже невозможно: ${blocker.charAt(0).toLowerCase()}${blocker.slice(1)}`) : OK;
     }
 
+    case 'UseAbility': {
+      const blocker = abilityBlocker(state, cmd.power, cmd);
+      return blocker ? fail(blocker) : OK;
+    }
+
+    case 'BuyProjectStage': {
+      const blocker = projectBlocker(state, cmd.power, cmd.cityId, cmd.kind);
+      return blocker ? fail(blocker) : OK;
+    }
+
     case 'CancelPact': {
       if (!state.powers[cmd.target]) return fail('Такой державы нет');
       if (!hasPact(state, cmd.power, cmd.target, cmd.kind)) return fail(cmd.kind === 'trade' ? 'Договора нет' : 'Союза нет');
@@ -267,17 +284,19 @@ export function apply(state: GameState, cmd: Command): void {
       const city = findCity(state, cmd.cityId)!;
       power.gold -= citizenPrice(state, cmd.power);
       city.purchasedThisTurn = true;
-      const mp = balance.units.boughtUnitsCanMove ? balance.units.citizen.mp : 0;
+      const mp = balance.units.boughtUnitsCanMove ? balance.units.citizen.mp + epochMpBonus(state, cmd.power) : 0;
       createUnit(state, cmd.power, 'citizen', spawnTile(state, city)!, mp);
       break;
     }
 
     case 'BuyBuilding': {
       const city = findCity(state, cmd.cityId)!;
-      power.gold -= buildingPrice(state, cmd.power, cmd.buildingId);
+      const def = buildingDef(cmd.buildingId);
+      power.gold -= buildingPrice(state, cmd.power, cmd.buildingId, city);
       city.purchasedThisTurn = true;
-      city.buildings.push(cmd.buildingId);
-      log(state, cmd.power, `${city.name}: построено здание «${buildingDef(cmd.buildingId).name}»`);
+      addBuilding(city, def);
+      if (def.wonder) log(state, NONE, `${power.name} строит чудо света «${def.name}» в городе ${city.name}`);
+      else log(state, cmd.power, `${city.name}: построено здание «${def.name}»`);
       break;
     }
 
@@ -285,7 +304,7 @@ export function apply(state: GameState, cmd: Command): void {
       const city = findCity(state, cmd.cityId)!;
       power.gold -= militaryPrice(state, cmd.power);
       city.purchasedThisTurn = true;
-      const mp = balance.units.boughtUnitsCanMove ? unitDef(cmd.unitType).mp : 0;
+      const mp = balance.units.boughtUnitsCanMove ? unitDef(cmd.unitType).mp + epochMpBonus(state, cmd.power) : 0;
       createUnit(state, cmd.power, cmd.unitType, spawnTile(state, city)!, mp, balance.units.barracksLevel);
       log(state, cmd.power, `${city.name}: куплен ${unitDef(cmd.unitType).name.toLowerCase()}`);
       break;
@@ -339,11 +358,23 @@ export function apply(state: GameState, cmd: Command): void {
       cancelPact(state, cmd.power, cmd.target, cmd.kind);
       break;
 
+    case 'UseAbility':
+      useAbility(state, cmd.power, cmd);
+      break;
+
+    case 'BuyProjectStage':
+      buyProjectStage(state, cmd.power, cmd.cityId, cmd.kind);
+      break;
+
     case 'EndTurn':
       advanceTurn(state);
       return;
   }
   updateContacts(state, cmd.power);
+  // Стабильность зависит от городов, зданий, войн и способностей — пересчёт после каждой команды.
+  if (cmd.type === 'Move' || cmd.type === 'Transfer' || cmd.type === 'CancelRoute' || cmd.type === 'Merge') refreshStability(state, cmd.power);
+  else refreshAllStability(state);
+  checkVictory(state);
 }
 
 /** Проверяет и применяет команду. */

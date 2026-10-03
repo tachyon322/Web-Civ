@@ -14,6 +14,12 @@ export * from './capture';
 export * from './diplomacy';
 export * from './relations';
 export * from './text';
+export * from './epochs';
+export * from './stability';
+export * from './buildings';
+export * from './culture';
+export * from './abilities';
+export * from './victory';
 export * from './deterrence';
 export { newGame, MAX_POWERS, type NewGameSettings } from './game';
 export {
@@ -23,7 +29,9 @@ export {
   characterDef,
   diplomacyConfig,
   diplomacyTraits,
+  pathsConfig,
   nations,
   terrainDefs,
+  type AbilityId,
   type BuildingDef,
 } from './data';

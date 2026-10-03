@@ -7,16 +7,19 @@ import type { Breakdown } from './economy';
 import { neighbors } from './hex';
 import { allied, atWar, cityAt, findPact, isMilitary, mapSize, vassalLink } from './state';
 import { turnsAgo } from './text';
-import { NONE, type GameState, type Memory, type MemoryKind, type PactKind } from './types';
+import { projectLeader } from './victory';
+import { NONE, type GameState, type Memory, type MemoryKind, type Pact, type PactKind } from './types';
 import { computeVisible } from './visibility';
 
 const ocfg = diplomacyConfig.opinion;
 
 // ---------- Пары: войны, перемирия, договоры ----------
 
-export function addPact(state: GameState, a: number, b: number, kind: PactKind, until = 0): void {
+export function addPact(state: GameState, a: number, b: number, kind: PactKind, until = 0, by?: number): void {
   if (findPact(state, a, b, kind)) return;
-  state.pacts.push({ kind, a: Math.min(a, b), b: Math.max(a, b), since: state.turn, until });
+  const pact: Pact = { kind, a: Math.min(a, b), b: Math.max(a, b), since: state.turn, until };
+  if (by !== undefined) pact.by = by;
+  state.pacts.push(pact);
 }
 
 export function removePact(state: GameState, a: number, b: number, kind: PactKind): boolean {
@@ -26,15 +29,15 @@ export function removePact(state: GameState, a: number, b: number, kind: PactKin
   return true;
 }
 
-/** Начинает войну пары: договоры и перемирие между ними прекращаются. */
-export function startWar(state: GameState, a: number, b: number): void {
+/** Начинает войну пары: договоры и перемирие между ними прекращаются. by — кто напал. */
+export function startWar(state: GameState, a: number, b: number, by: number = a): void {
   if (a === b) return;
   const pa = state.powers[a];
   const pb = state.powers[b];
   if (!pa.wars.includes(b)) pa.wars.push(b);
   if (!pb.wars.includes(a)) pb.wars.push(a);
   for (const kind of ['trade', 'alliance', 'truce'] as const) removePact(state, a, b, kind);
-  addPact(state, a, b, 'war');
+  addPact(state, a, b, 'war', 0, by);
 }
 
 /** Заканчивает войну пары перемирием; обе стороны помнят войну. */
@@ -121,8 +124,10 @@ export function foreignCapitalsHeld(state: GameState, power: number): number {
   return n;
 }
 
-/** Держава, близкая к победе завоеванием (против неё собирается коалиция), или NONE. */
+/** Держава, близкая к победе (против неё собирается коалиция), или NONE: финальный проект, затем завоевание. */
 export function findCoalitionLeader(state: GameState): number {
+  const builder = projectLeader(state);
+  if (builder !== NONE) return builder;
   const need = Math.max(1, Math.ceil(state.map.starts.length * diplomacyConfig.coalition.capitalsShare));
   let best = NONE;
   let bestHeld = 0;

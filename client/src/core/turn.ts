@@ -1,8 +1,13 @@
-// Конец хода: доходы, выстрелы городов, рост, дипломатия, восстановление и снабжение юнитов, маршруты.
+// Конец хода: доходы и эпохи, выстрелы городов, ополчение, рост, культура, стабильность и отделение,
+// дипломатия, восстановление и снабжение юнитов, маршруты, победы.
 
 import { forecastCityShot } from './combat';
 import { balance, unitDef } from './data';
-import { diplomacyNewTurn, expireProposals, updateContacts } from './diplomacy';
+import { cultureNewTurn, spawnMilitia } from './culture';
+import { diplomacyNewTurn, expireProposals, logPublic, updateContacts } from './diplomacy';
+import { epochMpBonus, epochName, epochOf } from './epochs';
+import { processSecession, refreshAllStability } from './stability';
+import { checkVictory } from './victory';
 import { cityGrowthPerTurn, computeIncome } from './economy';
 import { log, removeUnit } from './entities';
 import { neighbors } from './hex';
@@ -23,12 +28,19 @@ import { NONE, type GameState, type Unit } from './types';
 import { updateExplored } from './visibility';
 
 function collectIncome(state: GameState): void {
+  // Сначала считаем все доходы, потом зачисляем: утечка мозгов и дань зависят от чужих доходов.
+  const incomes = state.powers.map((p) => (p.alive ? computeIncome(state, p.id) : null));
   for (const power of state.powers) {
-    if (!power.alive) continue;
-    const income = computeIncome(state, power.id);
+    const income = incomes[power.id];
+    if (!income) continue;
+    const epoch = epochOf(power);
     power.gold += income.gold.total;
     power.science += income.science.total;
     power.culture += income.culture.total;
+    power.scienceTotal += Math.max(0, income.science.total);
+    power.cultureTotal += Math.max(0, income.culture.total);
+    const now = epochOf(power);
+    if (now > epoch) logPublic(state, [power.id], `${power.name} вступает в эпоху «${epochName(now)}»`);
   }
 }
 
@@ -104,7 +116,7 @@ function upkeepUnits(state: GameState): void {
     }
     unit.fortified = !unit.moved;
     unit.moved = false;
-    unit.mp = unitBaseMp(unit) + (onOwnLand ? balance.units.ownTerritoryMpBonus : 0);
+    unit.mp = unitBaseMp(unit) + epochMpBonus(state, unit.owner) + (onOwnLand ? balance.units.ownTerritoryMpBonus : 0);
   }
 }
 
@@ -121,10 +133,15 @@ function continueRoutes(state: GameState): void {
 export function advanceTurn(state: GameState): void {
   collectIncome(state);
   cityShots(state);
+  spawnMilitia(state);
   growCities(state);
   expireProposals(state);
   state.turn++;
+  cultureNewTurn(state);
+  refreshAllStability(state);
   diplomacyNewTurn(state);
+  processSecession(state);
+  refreshAllStability(state);
   upkeepUnits(state);
   continueRoutes(state);
   for (const power of state.powers) {
@@ -132,4 +149,5 @@ export function advanceTurn(state: GameState): void {
     updateExplored(state, power.id);
     updateContacts(state, power.id);
   }
+  checkVictory(state);
 }

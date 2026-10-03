@@ -1,7 +1,9 @@
 // Доходы и цены. Каждая цифра собирается из слагаемых, чтобы интерфейс мог показать разбивку.
 
-import { balance, buildingDef, buildings, diplomacyConfig, specialYields } from './data';
+import { activeBuildings, buildingPrice } from './buildings';
+import { balance, buildingDef, buildings, diplomacyConfig, pathsConfig, specialYields } from './data';
 import { borderTiles } from './relations';
+import { stabilityLevel } from './stability';
 import { citiesOf, isLand, unitPeople, unitsOf, vassalsOf } from './state';
 import { SPECIALS, type City, type GameState } from './types';
 
@@ -27,20 +29,22 @@ function add(b: Breakdown, label: string, value: number): void {
   b.total += value;
 }
 
-/** Доход без дани: города, здания, особые клетки, сложность, торговля, содержание. */
-function baseIncome(state: GameState, power: number): Income {
-  const income: Income = {
-    gold: { total: 0, items: [] },
-    science: { total: 0, items: [] },
-    culture: { total: 0, items: [] },
-  };
+function emptyIncome(): Income {
+  return { gold: { total: 0, items: [] }, science: { total: 0, items: [] }, culture: { total: 0, items: [] } };
+}
+
+const RESOURCES = ['gold', 'science', 'culture'] as const;
+
+/** Производство: города, работающие здания, особые клетки, сложность (у ботов) и стабильность. */
+function production(state: GameState, power: number): Income {
+  const income = emptyIncome();
   const cities = citiesOf(state, power);
   for (const city of cities) {
     add(income.gold, 'Города по уровню', balance.city.goldByLevel[city.level - 1]);
     add(income.science, 'Города', balance.city.sciencePerCity);
-    for (const id of city.buildings) {
+    for (const id of activeBuildings(city)) {
       const def = buildingDef(id);
-      for (const res of ['gold', 'science', 'culture'] as const) add(income[res], def.name, def.yields[res] ?? 0);
+      for (const res of RESOURCES) add(income[res], def.name, def.yields[res] ?? 0);
     }
   }
   const { owner } = state.territory;
@@ -50,14 +54,51 @@ function baseIncome(state: GameState, power: number): Income {
     const special = SPECIALS[state.map.special[t]];
     if (!special) continue;
     const y = specialYields[special];
-    for (const res of ['gold', 'science', 'culture'] as const) add(income[res], specialNames[special], y[res] ?? 0);
+    for (const res of RESOURCES) add(income[res], specialNames[special], y[res] ?? 0);
   }
   // Сложность меняет только доход ботов: процент от прихода до вычета содержания.
   const p = state.powers[power];
   const bonus = p.isHuman ? 0 : balance.difficulty[state.settings.difficulty].botIncomeBonus;
   if (bonus) {
-    for (const res of ['gold', 'science', 'culture'] as const) add(income[res], 'Сложность', Math.round(income[res].total * bonus));
+    for (const res of RESOURCES) add(income[res], 'Сложность', Math.round(income[res].total * bonus));
   }
+  // Стабильность: расцвет прибавляет, недовольство и мятежи убавляют.
+  const level = stabilityLevel(p.stability);
+  if (level.income) {
+    for (const res of RESOURCES) add(income[res], `Стабильность: ${level.name.toLowerCase()}`, Math.round(income[res].total * level.income));
+  }
+  return income;
+}
+
+/** Кто забирает науку у державы утечкой мозгов: соседи по границе с намного более сильной культурой. */
+export function brainDrainTakers(state: GameState, victim: number): number[] {
+  const cfg = pathsConfig.culture;
+  const theirs = Math.max(1, state.powers[victim].cultureTotal);
+  return state.powers
+    .filter((p) => p.alive && p.id !== victim && p.cultureTotal >= theirs * cfg.brainDrainRatio && borderTiles(state, p.id, victim) > 0)
+    .map((p) => p.id);
+}
+
+/** Сколько науки уходит от victim к каждому из забирающих. */
+function brainDrainEach(state: GameState, victim: number, takers: number): number {
+  const cfg = pathsConfig.culture;
+  if (!takers) return 0;
+  const share = Math.min(cfg.brainDrainMaxShare, cfg.brainDrainShare * takers) / takers;
+  return Math.floor(Math.max(0, production(state, victim).science.total) * share);
+}
+
+/** Доход без дани: производство, утечка мозгов, торговля, содержание. */
+function baseIncome(state: GameState, power: number): Income {
+  const income = production(state, power);
+  const takers = brainDrainTakers(state, power);
+  add(income.science, 'Утечка мозгов', -brainDrainEach(state, power, takers.length) * takers.length);
+  let gained = 0;
+  for (const other of state.powers) {
+    if (!other.alive || other.id === power || state.powers[power].cultureTotal <= other.cultureTotal) continue;
+    const t = brainDrainTakers(state, other.id);
+    if (t.includes(power)) gained += brainDrainEach(state, other.id, t.length);
+  }
+  add(income.science, 'Утечка мозгов к нам', gained);
   add(income.gold, 'Торговые договоры', tradeGold(state, power));
   const people = unitsOf(state, power).reduce((sum, u) => sum + unitPeople(u), 0);
   add(income.gold, 'Содержание юнитов', -people * balance.units.upkeepPerPerson);
@@ -120,12 +161,7 @@ export function foundCityPrice(state: GameState, power: number): number {
   return balance.prices.foundCityBase + balance.prices.foundCityStep * Math.max(0, count - 1);
 }
 
-/** Цена растёт с каждым однотипным зданием в державе. */
-export function buildingPrice(state: GameState, power: number, buildingId: string): number {
-  const def = buildingDef(buildingId);
-  const owned = citiesOf(state, power).filter((c) => c.buildings.includes(buildingId)).length;
-  return def.basePrice + def.priceStep * owned;
-}
+export { buildingPrice };
 
 export function availableBuildings(): readonly string[] {
   return buildings.map((b) => b.id);

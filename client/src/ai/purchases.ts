@@ -3,7 +3,8 @@
 // менее важные покупки не трогают отложенное. Доход после покупки не уходит ниже порога.
 
 import type { Command } from '../core/commands';
-import { aiConfig, buildings } from '../core/data';
+import { buildingBlocker } from '../core/buildings';
+import { aiConfig, buildingDef, buildings } from '../core/data';
 import { buildingPrice, citizenPrice, militaryPrice } from '../core/economy';
 import { distance } from '../core/hex';
 import { citySlots, hasBuildingEffect, mapSize } from '../core/state';
@@ -42,6 +43,13 @@ interface Candidate {
 }
 
 const LEVEL2_PEOPLE = 2;
+
+/** Исходное здание цепочки улучшений: университет → библиотека. */
+function rootBuilding(id: string): string {
+  let def = buildingDef(id);
+  while (def.upgradeOf) def = buildingDef(def.upgradeOf);
+  return def.id;
+}
 
 function hasFreeSlot(city: City): boolean {
   return city.buildings.length < citySlots(city);
@@ -87,14 +95,19 @@ function candidates(ctx: BotContext, plan: PurchasePlan): Candidate[] {
       const cmd: Command = { type: 'BuyCitizen', power, cityId: city.id };
       list.push({ city, priority: 40 + city.level, price: citizenPrice(state, power), upkeep: 1, saveFor: false, kind: 'citizen', cmd });
     }
-    if (free) {
-      for (const b of buildings) {
-        if (city.buildings.includes(b.id) || b.effect) continue;
-        const price = buildingPrice(state, power, b.id);
-        const cmd: Command = { type: 'BuyBuilding', power, cityId: city.id, buildingId: b.id };
-        // Чем желаннее по характеру и дешевле, тем раньше.
-        list.push({ city, priority: 20 + (weights[b.id] ?? 1) * 100 / price, price, upkeep: 0, saveFor: false, kind: 'building', cmd });
-      }
+    // Здания, улучшения (в том же слоте) и чудеса: чем желаннее по характеру и дешевле, тем раньше.
+    // При низкой стабильности храмы, театры и музеи идут вперёд.
+    const lowStability = state.powers[power].stability < aiConfig.paths.minStabilityToExpand;
+    for (const b of buildings) {
+      if (b.effect || buildingBlocker(state, power, city, b)) continue;
+      const price = buildingPrice(state, power, b.id, city);
+      const root = rootBuilding(b.id);
+      const weight = b.wonder ? ctx.character.wonders : (weights[root] ?? 1);
+      const calming = lowStability && (b.stability ?? 0) > 0 && !b.wonder ? aiConfig.paths.templeBoost : 0;
+      const cmd: Command = { type: 'BuyBuilding', power, cityId: city.id, buildingId: b.id };
+      const value = ((weight * 100) / price) * (b.wonder ? aiConfig.paths.wonderPriority : 1);
+      const save = calming > 0 || (!!b.wonder && weight >= aiConfig.paths.wonderSaveWeight);
+      list.push({ city, priority: 20 + calming + value, price, upkeep: 0, saveFor: save, kind: 'building', cmd });
     }
   }
   return list.sort((a, b) => b.priority - a.priority || a.city.id - b.city.id);

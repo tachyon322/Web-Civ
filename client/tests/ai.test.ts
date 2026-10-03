@@ -2,17 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { playBotTurn, runBots } from '../src/ai';
 import { createContext } from '../src/ai/context';
 import { attackValue, breachLevel, chooseTargetCity } from '../src/ai/military';
-import { findSites } from '../src/ai/settlers';
+import { canExpand, findSites } from '../src/ai/settlers';
 import { chooseWarTarget } from '../src/ai/war';
 import { execute } from '../src/core/commands';
 import { forecastAttack } from '../src/core/combat';
-import { aiConfig, nationDef } from '../src/core/data';
+import { aiConfig, nationDef, pathsConfig } from '../src/core/data';
 import { deterrenceIndex } from '../src/core/deterrence';
 import { computeIncome } from '../src/core/economy';
 import { newGame } from '../src/core/game';
 import { atWar, citiesOf, hasPact, unitsOf } from '../src/core/state';
 import { pendingProposals } from '../src/core/diplomacy';
 import { addPact, remember } from '../src/core/relations';
+import { refreshAllStability } from '../src/core/stability';
 import { addCitizen, addCity, addUnit, at, blankState, declareWar } from './helpers';
 
 /** Держава 1 — бот, всё вокруг разведано; встреча с игроком уже была. */
@@ -323,5 +324,46 @@ describe('ход ботов', () => {
     const commands = runBots(s, { budgetMs: 0 });
     for (const cmd of commands) expect(execute(copy, cmd).ok).toBe(true);
     expect(copy).toEqual(s);
+  });
+});
+
+describe('пути ботов', () => {
+  function bot(): ReturnType<typeof blankState> {
+    const s = blankState(20, 12, 2);
+    s.powers[1].character = 'diplomat';
+    s.powers[0].met.push(1);
+    s.powers[1].met.push(0);
+    addCity(s, 0, 2, 5, true);
+    addCity(s, 1, 14, 5, true);
+    return s;
+  }
+
+  it('при недовольстве бот устраивает праздник', () => {
+    const s = bot();
+    s.powers[1].culture = 100;
+    s.powers[0].effects.push({ kind: 'propaganda', target: 1, until: 99 });
+    s.powers[1].gold = -10;
+    refreshAllStability(s);
+    expect(s.powers[1].stability).toBeLessThan(aiConfig.paths.holidayBelow);
+    playBotTurn(s, 1);
+    expect(s.powers[1].effects.some((e) => e.kind === 'holiday')).toBe(true);
+  });
+
+  it('в последней эпохе бот выкупает этап Великого проекта', () => {
+    const s = bot();
+    const last = pathsConfig.epochs[pathsConfig.epochs.length - 1];
+    s.powers[1].scienceTotal = last.science;
+    s.powers[1].science = 5000;
+    playBotTurn(s, 1);
+    expect(citiesOf(s, 1)[0].project).toEqual({ kind: 'science', stages: 1 });
+  });
+
+  it('при низкой стабильности бот не основывает новых городов сверх бесплатных', () => {
+    const s = bot();
+    for (const [c, r] of [[17, 2], [17, 9], [11, 9]]) addCity(s, 1, c, r);
+    s.powers[1].stability = 46;
+    expect(canExpand(createContext(s, 1, Infinity))).toBe(false);
+    s.powers[1].stability = 60;
+    expect(canExpand(createContext(s, 1, Infinity))).toBe(true);
   });
 });

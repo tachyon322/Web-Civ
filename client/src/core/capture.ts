@@ -6,7 +6,9 @@ import { log, removeUnit } from './entities';
 import { distance } from './hex';
 import { atWar, citiesOf, cityMaxDurability, citySlots, findCity, mapSize, unitAt } from './state';
 import { forgetPower, remember } from './relations';
+import { revoltSource } from './culture';
 import { turnsWord } from './text';
+import { burnProject } from './victory';
 import { NONE, type City, type GameState, type Unit } from './types';
 import { updateExplored } from './visibility';
 
@@ -61,6 +63,11 @@ export function plunderLoot(city: City): { gold: number; science: number; cultur
 export function transferCity(state: GameState, city: City, newOwner: number): void {
   const oldOwner = city.owner;
   city.owner = newOwner;
+  burnProject(state, city);
+  city.revoltFrom = NONE;
+  city.revoltProgress = 0;
+  city.pressureFrom = NONE;
+  city.pressure = 0;
   const { owner, city: cityOf } = state.territory;
   for (let t = 0; t < cityOf.length; t++) if (cityOf[t] === city.id) owner[t] = newOwner;
   if (city.isCapital) {
@@ -112,12 +119,17 @@ export function captureCity(state: GameState, unit: Unit, cityId: number, choice
     log(state, victim.id, `${city.name} захвачен державой ${me.name}`);
     transferCity(state, city, unit.owner);
     city.purchasedThisTurn = true;
+    // Если культура прежнего владельца сильнее, начнётся мятеж (гарнизон его сдерживает).
+    city.revoltFrom = revoltSource(state, city, victim.id);
+    if (city.revoltFrom !== NONE) log(state, unit.owner, `${city.name}: культура прежнего владельца сильнее — горожане готовят мятеж`);
   } else if (choice === 'plunder') {
     remember(state, victim.id, me.id, 'plundered', ev.plundered);
     const loot = plunderLoot(city);
     me.gold += loot.gold;
     me.science += loot.science;
     me.culture += loot.culture;
+    me.scienceTotal += loot.science;
+    me.cultureTotal += loot.culture;
     city.level = Math.max(1, city.level - 1);
     city.growth = 0;
     while (city.buildings.length > citySlots(city)) city.buildings.pop();

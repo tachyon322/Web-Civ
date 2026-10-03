@@ -3,7 +3,11 @@
 // Прогноз считается той же функцией ядра, что и ответ бота, — поэтому они не расходятся.
 
 import {
+  NO_TARGET,
   NO_TERMS,
+  abilityCost,
+  allied,
+  pathsConfig,
   accepts,
   atWar,
   characterDef,
@@ -262,11 +266,33 @@ export class DiplomacyWindow {
       html += this.joinWarBlock();
       html += this.tributeBlock();
     }
+    html += this.abilitiesBlock();
     if (!atWar(state, power, t) && me.suzerain === NONE && pt.suzerain !== power && me.suzerain !== t) {
       html += `<h3>Война</h3><div class="actions">${this.button(`Объявить войну: ${pt.name}`, { type: 'DeclareWar', power, target: t }, {
         confirm: () => this.confirmWar(t),
         cls: 'danger',
       })}</div>`;
+    }
+    return html;
+  }
+
+  /** Способности против этой державы: разведка, пропаганда, призыв к миру. */
+  private abilitiesBlock(): string {
+    const { state, power } = this.host;
+    const t = this.target;
+    const a = pathsConfig.abilities;
+    const use = (ability: 'recon' | 'propaganda' | 'callPeace', victim = NONE) => ({ ...NO_TARGET, ability, target: t, victim });
+    const row = (label: string, u: ReturnType<typeof use>, note: string) => {
+      const icon = a[u.ability].path === 'science' ? '🔬' : '🎭';
+      return `<div class="deal">${this.button(`${label} (${abilityCost(state, u)} ${icon})`, { type: 'UseAbility', power, ...u })}<div class="muted small">${esc(note)}</div></div>`;
+    };
+    let html = '<h3>Способности</h3>';
+    html += row('Разведка', use('recon'), `${a.recon.turns} ходов видны все их юниты`);
+    if (!allied(state, power, t)) html += row('Пропаганда', use('propaganda'), `их стабильность ${pathsConfig.stability.propaganda} на ${a.propaganda.turns} ходов; они это запомнят`);
+    // Призыв к миру — против войн, которые начала эта держава.
+    for (const v of state.powers[t].wars) {
+      if (findPact(state, t, v, 'war')?.by !== t) continue;
+      html += row(`Призыв к миру с державой ${state.powers[v].name}`, use('callPeace', v), 'откажутся — испортят отношения со всеми');
     }
     return html;
   }

@@ -6,6 +6,7 @@ import buildingsJson from '../data/buildings.json';
 import diplomacyJson from '../data/diplomacy.json';
 import mapgenJson from '../data/mapgen.json';
 import nationsJson from '../data/nations.json';
+import pathsJson from '../data/paths.json';
 import terrainJson from '../data/terrain.json';
 import type { Character, MemoryKind, SpecialId, TerrainId, UnitType } from './types';
 
@@ -23,6 +24,14 @@ export interface BuildingDef {
   durability?: number;
   /** Прибавка к силе города в защите и при выстреле (стены). */
   strength?: number;
+  /** Прибавка к стабильности державы. */
+  stability?: number;
+  /** Улучшение какого здания (занимает тот же слот). */
+  upgradeOf?: string;
+  /** С какой эпохи доступно (индекс). */
+  epoch?: number;
+  /** Чудо света: одно на весь мир. */
+  wonder?: boolean;
 }
 
 export interface UnitDef {
@@ -75,6 +84,11 @@ export function nationDef(id: string): NationDef {
   if (!def) throw new Error(`Неизвестная нация: ${id}`);
   return def;
 }
+
+/** Эпохи, стабильность, способности, культура, финальные проекты, победы. */
+export const pathsConfig = pathsJson;
+
+export type AbilityId = keyof typeof pathsJson.abilities;
 
 /** Числа дипломатии: отношения, память, подарки, сделки. */
 export const diplomacyConfig = diplomacyJson;

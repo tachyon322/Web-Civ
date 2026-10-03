@@ -1,6 +1,6 @@
 // Маленькая ручная карта для тестов правил: всё — равнина, без особых клеток.
 
-import { createCity, createUnit } from '../src/core/entities';
+import { blankPower, createCity, createUnit } from '../src/core/entities';
 import { startWar } from '../src/core/relations';
 import { NONE, T_PLAINS, type GameState, type Unit, type UnitType } from '../src/core/types';
 
@@ -14,29 +14,16 @@ export function blankState(width = 12, height = 10, powers = 2): GameState {
     map: { width, height, terrain: new Array(n).fill(T_PLAINS), special: new Array(n).fill(0), starts: [] },
     territory: { owner: new Array(n).fill(NONE), city: new Array(n).fill(NONE) },
     powers: Array.from({ length: powers }, (_, id) => ({
-      id,
-      nationId: id === 0 ? 'russia' : 'greece',
+      ...blankPower(id, id === 0 ? 'russia' : 'greece', id === 0, id === 0 ? null : 'aggressor', n, 1000),
       name: `P${id}`,
       color: '#ffffff',
-      isHuman: id === 0,
-      character: id === 0 ? null : 'aggressor',
-      alive: true,
-      gold: 1000,
-      science: 0,
-      culture: 0,
-      explored: new Array(n).fill(0),
-      capitalId: NONE,
-      cityNamesUsed: 0,
-      met: [],
-      wars: [],
-      suzerain: NONE,
-      memories: [],
     })),
     cities: [],
     units: [],
     pacts: [],
     proposals: [],
     coalitionLeader: NONE,
+    winner: null,
     nextId: 1,
     log: [],
   };

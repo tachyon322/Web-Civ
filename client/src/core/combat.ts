@@ -1,7 +1,10 @@
 // Бой. Случайности нет: исход считается одной функцией и для прогноза, и для самой атаки.
 // Сила юнита — она же здоровье. Модификаторы перемножаются.
 
-import { balance, buildingDef, terrainDefs, unitDef } from './data';
+import { activeBuildings } from './buildings';
+import { balance, buildingDef, pathsConfig, terrainDefs, unitDef } from './data';
+import { epochName, epochOf, epochStrengthFactor, techGapBonus } from './epochs';
+import { stabilityLevel } from './stability';
 import { log, removeUnit } from './entities';
 import { distance } from './hex';
 import { atWar, cityAt, isLand, mapSize, unitAt, unitMaxStrength } from './state';
@@ -79,9 +82,21 @@ function product(mods: Modifier[]): number {
   return mods.reduce((p, m) => p * m.factor, 1);
 }
 
-/** Модификаторы юнита в атаке. */
-function attackModifiers(attacker: Unit, defender: Unit | null): Modifier[] {
+/** Модификаторы пути и державы: эпоха, технологический разрыв, недовольство. enemy — NONE для боя с городом без хозяина. */
+function powerModifiers(state: GameState, owner: number, enemy: number): Modifier[] {
   const mods: Modifier[] = [];
+  const epoch = epochOf(state.powers[owner]);
+  if (epoch > 0) mods.push({ label: `Эпоха: ${epochName(epoch).toLowerCase()}`, factor: epochStrengthFactor(state, owner) });
+  const gap = enemy >= 0 ? techGapBonus(state, owner, enemy) : 0;
+  if (gap) mods.push({ label: 'Технологический разрыв', factor: 1 + gap });
+  const level = stabilityLevel(state.powers[owner].stability);
+  if (level.combat !== 1) mods.push({ label: `${level.name}: боевой дух`, factor: level.combat });
+  return mods;
+}
+
+/** Модификаторы юнита в атаке. */
+function attackModifiers(state: GameState, attacker: Unit, defender: Unit | null, defenderOwner: number): Modifier[] {
+  const mods: Modifier[] = powerModifiers(state, attacker.owner, defenderOwner);
   if (defender && counters(attacker.type, defender.type)) {
     mods.push({ label: `${unitDef(attacker.type).name} против: ${unitDef(defender.type).name.toLowerCase()}`, factor: 1 + cfg.counterBonus });
   }
@@ -91,8 +106,8 @@ function attackModifiers(attacker: Unit, defender: Unit | null): Modifier[] {
 }
 
 /** Модификаторы юнита в защите. attackerType — null, если стреляет город. */
-export function defenseModifiers(state: GameState, defender: Unit, attackerType: UnitType | null): Modifier[] {
-  const mods: Modifier[] = [];
+export function defenseModifiers(state: GameState, defender: Unit, attackerType: UnitType | null, attackerOwner: number): Modifier[] {
+  const mods: Modifier[] = powerModifiers(state, defender.owner, attackerOwner);
   if (attackerType && counters(defender.type, attackerType)) {
     mods.push({ label: `${unitDef(defender.type).name} против: ${unitDef(attackerType).name.toLowerCase()}`, factor: 1 + cfg.counterBonus });
   }
@@ -104,15 +119,19 @@ export function defenseModifiers(state: GameState, defender: Unit, attackerType:
   return mods;
 }
 
-/** Слагаемые силы города: уровень, стены, столица. */
+/** Слагаемые силы города: уровень, стены, столица, фортификация. */
 export function cityStrengthParts(city: City): { label: string; value: number }[] {
   const cfgCity = balance.cityDefense;
   const parts = [{ label: 'уровень', value: city.level * cfgCity.strengthPerLevel }];
-  for (const b of city.buildings) {
+  for (const b of activeBuildings(city)) {
     const def = buildingDef(b);
     if (def.strength) parts.push({ label: def.name.toLowerCase(), value: def.strength });
   }
   if (city.isCapital) parts.push({ label: 'столица', value: cfgCity.capitalStrengthBonus });
+  if (city.fortifyTurns > 0) {
+    const base = parts.reduce((sum, p) => sum + p.value, 0);
+    parts.push({ label: 'фортификация', value: base * (pathsConfig.abilities.fortify.strengthFactor - 1) });
+  }
   return parts;
 }
 
@@ -144,13 +163,14 @@ export function forecastAttack(state: GameState, attacker: Unit, tile: number): 
   const city = defenderUnit ? null : cityAt(state, tile)!;
   const ranged = unitDef(attacker.type).range > 1;
 
-  const aMods = attackModifiers(attacker, defenderUnit);
+  const defenderOwner = defenderUnit?.owner ?? cityAt(state, tile)!.owner;
+  const aMods = attackModifiers(state, attacker, defenderUnit, defenderOwner);
   const attackerEff = attacker.strength * product(aMods);
 
   let defenderEff: number;
   let defenderSide: CombatSide;
   if (defenderUnit) {
-    const dMods = defenseModifiers(state, defenderUnit, attacker.type);
+    const dMods = defenseModifiers(state, defenderUnit, attacker.type, attacker.owner);
     defenderEff = defenderUnit.strength * product(dMods);
     defenderSide = {
       name: unitName(defenderUnit),
@@ -242,7 +262,7 @@ export function resolveAttack(state: GameState, attacker: Unit, tile: number): C
 
 /** Исход выстрела города по юниту: как лучник, без ответного урона. */
 export function forecastCityShot(state: GameState, city: City, target: Unit): { after: number; ratio: number } {
-  const defEff = target.strength * product(defenseModifiers(state, target, null));
+  const defEff = target.strength * product(defenseModifiers(state, target, null, city.owner));
   const ratio = cityStrength(city) / Math.max(defEff, 1e-6);
   const { defenderLoss } = lossesForRatio(ratio);
   return { after: defenderLoss >= 1 ? 0 : floorStrength(target.strength * (1 - defenderLoss)), ratio };

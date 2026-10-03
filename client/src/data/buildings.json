@@ -1,47 +1,19 @@
 [
-  {
-    "id": "market",
-    "name": "Рынок",
-    "basePrice": 30,
-    "priceStep": 15,
-    "yields": {
-      "gold": 2
-    }
-  },
-  {
-    "id": "library",
-    "name": "Библиотека",
-    "basePrice": 30,
-    "priceStep": 15,
-    "yields": {
-      "science": 2
-    }
-  },
-  {
-    "id": "temple",
-    "name": "Храм",
-    "basePrice": 30,
-    "priceStep": 15,
-    "yields": {
-      "culture": 2
-    }
-  },
-  {
-    "id": "barracks",
-    "name": "Казармы",
-    "basePrice": 40,
-    "priceStep": 20,
-    "yields": {},
-    "effect": "barracks"
-  },
-  {
-    "id": "walls",
-    "name": "Стены",
-    "basePrice": 35,
-    "priceStep": 15,
-    "yields": {},
-    "effect": "walls",
-    "durability": 1,
-    "strength": 1
-  }
+  { "id": "market", "name": "Рынок", "basePrice": 30, "priceStep": 15, "yields": { "gold": 2 } },
+  { "id": "library", "name": "Библиотека", "basePrice": 30, "priceStep": 15, "yields": { "science": 2 } },
+  { "id": "university", "name": "Университет", "basePrice": 50, "priceStep": 20, "yields": { "science": 4 }, "upgradeOf": "library", "epoch": 1 },
+  { "id": "laboratory", "name": "Лаборатория", "basePrice": 80, "priceStep": 25, "yields": { "science": 7 }, "upgradeOf": "university", "epoch": 3 },
+  { "id": "temple", "name": "Храм", "basePrice": 30, "priceStep": 15, "yields": { "culture": 2 }, "stability": 1 },
+  { "id": "theatre", "name": "Театр", "basePrice": 50, "priceStep": 20, "yields": { "culture": 4 }, "stability": 2, "upgradeOf": "temple", "epoch": 1 },
+  { "id": "museum", "name": "Музей", "basePrice": 80, "priceStep": 25, "yields": { "culture": 7 }, "stability": 3, "upgradeOf": "theatre", "epoch": 3 },
+  { "id": "barracks", "name": "Казармы", "basePrice": 40, "priceStep": 20, "yields": {}, "effect": "barracks" },
+  { "id": "walls", "name": "Стены", "basePrice": 35, "priceStep": 15, "yields": {}, "effect": "walls", "durability": 1, "strength": 1 },
+  { "id": "pyramids", "name": "Пирамиды", "basePrice": 150, "priceStep": 0, "yields": { "culture": 4 }, "stability": 3, "wonder": true, "epoch": 0 },
+  { "id": "gardens", "name": "Висячие сады", "basePrice": 150, "priceStep": 0, "yields": { "culture": 3, "gold": 2 }, "stability": 3, "wonder": true, "epoch": 0 },
+  { "id": "great_library", "name": "Великая библиотека", "basePrice": 220, "priceStep": 0, "yields": { "culture": 4, "science": 3 }, "stability": 3, "wonder": true, "epoch": 1 },
+  { "id": "colossus", "name": "Колосс", "basePrice": 220, "priceStep": 0, "yields": { "culture": 4, "gold": 3 }, "stability": 3, "wonder": true, "epoch": 1 },
+  { "id": "great_wall", "name": "Великая стена", "basePrice": 300, "priceStep": 0, "yields": { "culture": 5 }, "stability": 4, "wonder": true, "epoch": 2, "durability": 1, "strength": 1 },
+  { "id": "hagia_sophia", "name": "Святая София", "basePrice": 300, "priceStep": 0, "yields": { "culture": 6 }, "stability": 4, "wonder": true, "epoch": 2 },
+  { "id": "versailles", "name": "Версаль", "basePrice": 380, "priceStep": 0, "yields": { "culture": 7 }, "stability": 4, "wonder": true, "epoch": 3 },
+  { "id": "eiffel", "name": "Эйфелева башня", "basePrice": 460, "priceStep": 0, "yields": { "culture": 8 }, "stability": 5, "wonder": true, "epoch": 4 }
 ]

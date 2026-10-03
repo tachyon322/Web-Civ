@@ -5,7 +5,7 @@ import { neighbors } from './hex';
 import { canStop } from './pathfinding';
 import { cityMaxDurability, isLand, mapSize } from './state';
 import { assignFoundingTiles } from './territory';
-import { NONE, type City, type GameState, type Unit, type UnitType } from './types';
+import { NONE, type Character, type City, type GameState, type Power, type Unit, type UnitType } from './types';
 import { reveal } from './visibility';
 
 export function log(state: GameState, power: number, text: string): void {
@@ -17,6 +17,43 @@ function nextCityName(state: GameState, power: number): string {
   const names = nationDef(p.nationId).cities;
   const i = p.cityNamesUsed++;
   return i < names.length ? names[i] : `${p.name} ${i + 1}`;
+}
+
+/** Новая держава без городов: при старте партии и при отделении городов. */
+export function blankPower(
+  id: number,
+  nationId: string,
+  isHuman: boolean,
+  character: Character | null,
+  tiles: number,
+  gold: number,
+): Power {
+  const nation = nationDef(nationId);
+  return {
+    id,
+    nationId,
+    name: nation.name,
+    color: nation.color,
+    isHuman,
+    character,
+    alive: true,
+    gold,
+    science: 0,
+    culture: 0,
+    explored: new Array<number>(tiles).fill(0),
+    capitalId: NONE,
+    cityNamesUsed: 0,
+    met: [],
+    wars: [],
+    suzerain: NONE,
+    memories: [],
+    scienceTotal: 0,
+    cultureTotal: 0,
+    stability: 50,
+    effects: [],
+    deterrent: false,
+    secession: null,
+  };
 }
 
 export function createCity(state: GameState, power: number, tile: number, isCapital: boolean): City {
@@ -34,6 +71,15 @@ export function createCity(state: GameState, power: number, tile: number, isCapi
     attackedThisTurn: false,
     founder: power,
     plunderBlockedUntil: 0,
+    militiaReadyAt: 0,
+    revoltFrom: NONE,
+    revoltProgress: 0,
+    pressureFrom: NONE,
+    pressure: 0,
+    fortifyTurns: 0,
+    disabledBuilding: null,
+    disabledTurns: 0,
+    project: null,
   };
   city.durability = cityMaxDurability(city);
   state.cities.push(city);
