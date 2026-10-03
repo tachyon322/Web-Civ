@@ -3,6 +3,7 @@
   "tendencyChance": 0.5,
   "characters": {
     "aggressor": {
+      "warOpinionMax": 30, "breaksTreaties": true, "gifts": false, "demandsTribute": true, "seeksUnion": false,
       "name": "Агрессор",
       "description": "уважает только силу, нападает на слабых",
       "warRatio": 1,
@@ -15,6 +16,7 @@
       "capture": "annex"
     },
     "trader": {
+      "warOpinionMax": 0, "breaksTreaties": false, "gifts": true, "demandsTribute": false, "seeksUnion": false,
       "name": "Торговец",
       "description": "любит золото и договоры, не любит войны",
       "warRatio": 1.8,
@@ -27,6 +29,7 @@
       "capture": "plunder"
     },
     "diplomat": {
+      "warOpinionMax": -10, "breaksTreaties": false, "gifts": true, "demandsTribute": false, "seeksUnion": true,
       "name": "Дипломат",
       "description": "ищет союзы, ценит культуру",
       "warRatio": 1.6,
@@ -39,6 +42,7 @@
       "capture": "liberate"
     },
     "isolationist": {
+      "warOpinionMax": 0, "breaksTreaties": false, "gifts": false, "demandsTribute": false, "seeksUnion": false,
       "name": "Изоляционист",
       "description": "держится в стороне, крепит оборону",
       "warRatio": 2,
@@ -62,6 +66,24 @@
     "reach": 10,
     "maxOffensiveWars": 1,
     "busyTargetDiscount": 0.3
+  },
+  "diplomacy": {
+    "humanCooldown": 8,
+    "maxJoinAsks": 2,
+    "joinWarPayTurns": [3, 6],
+    "peaceGoldTurns": 5,
+    "giftMaxGap": 30,
+    "giftSurplusShare": 0.5,
+    "giftMin": 20,
+    "appeaseBelow": 30,
+    "appeaseValue": 15,
+    "cultureReserve": 30,
+    "tributeMargin": 1.25,
+    "tributeIncomeTurns": 3,
+    "tributeMin": 10,
+    "cancelTradeBelow": -30,
+    "cancelAllianceBelow": 10,
+    "leaderWarFactor": 0.6
   },
   "economy": {
     "minIncomeAfterPurchase": 1,

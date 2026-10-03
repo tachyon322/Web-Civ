@@ -2,7 +2,7 @@
 
 import { balance, buildingDef, terrainDefs, unitDef } from './data';
 import { neighbors, type MapSize } from './hex';
-import { NONE, TERRAINS, type City, type GameState, type Power, type Unit } from './types';
+import { NONE, TERRAINS, type City, type GameState, type Pact, type PactKind, type Power, type Unit } from './types';
 
 export function mapSize(state: GameState): MapSize {
   return state.map;
@@ -107,11 +107,52 @@ export function atWar(state: GameState, a: number, b: number): boolean {
   return a !== b && state.powers[a].wars.includes(b);
 }
 
-/**
- * Есть ли снабжение на клетке: своя территория или клетка рядом с ней.
- * Союзная территория добавится на этапе 4.
- */
+export function findPact(state: GameState, a: number, b: number, kind: PactKind): Pact | undefined {
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  return state.pacts.find((p) => p.a === lo && p.b === hi && p.kind === kind);
+}
+
+export function hasPact(state: GameState, a: number, b: number, kind: PactKind): boolean {
+  return findPact(state, a, b, kind) !== undefined;
+}
+
+/** Сколько ходов ещё действует перемирие (0 — нет перемирия). */
+export function truceLeft(state: GameState, a: number, b: number): number {
+  const p = findPact(state, a, b, 'truce');
+  return p ? Math.max(0, p.until - state.turn) : 0;
+}
+
+export function vassalsOf(state: GameState, power: number): number[] {
+  return state.powers.filter((p) => p.alive && p.suzerain === power).map((p) => p.id);
+}
+
+/** Кто ведёт внешнюю политику за державу: сюзерен вассала или она сама. */
+export function principalOf(state: GameState, power: number): number {
+  const s = state.powers[power].suzerain;
+  return s === NONE ? power : s;
+}
+
+/** Связаны ли державы вассалитетом (в любую сторону). */
+export function vassalLink(state: GameState, a: number, b: number): boolean {
+  return state.powers[a].suzerain === b || state.powers[b].suzerain === a;
+}
+
+/** Союзники в широком смысле: союз или вассалитет. У них общая сеть, обзор и снабжение. */
+export function allied(state: GameState, a: number, b: number): boolean {
+  if (a === b || a === NONE || b === NONE) return false;
+  return hasPact(state, a, b, 'alliance') || vassalLink(state, a, b);
+}
+
+/** Державы, с которыми у этой общая сеть и обзор (без неё самой). */
+export function friendsOf(state: GameState, power: number): number[] {
+  return state.powers.filter((p) => p.alive && allied(state, power, p.id)).map((p) => p.id);
+}
+
+/** Есть ли снабжение на клетке: своя или союзная территория или клетка рядом с ней. */
 export function suppliedAt(state: GameState, power: number, tile: number): boolean {
   const { owner } = state.territory;
-  return owner[tile] === power || neighbors(mapSize(state), tile).some((n) => owner[n] === power);
+  const friends = friendsOf(state, power);
+  const ok = (o: number) => o === power || (o !== NONE && friends.includes(o));
+  return ok(owner[tile]) || neighbors(mapSize(state), tile).some((n) => ok(owner[n]));
 }

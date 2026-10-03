@@ -28,6 +28,8 @@ import {
   computeNetwork,
   deterrenceIndex,
   distance,
+  opinion,
+  pendingProposals,
   execute,
   findCity,
   findPath,
@@ -62,6 +64,7 @@ import { computeVisible } from '../core/visibility';
 import { EMPTY_OVERLAY, type MapRenderer, type Overlay } from '../render/MapRenderer';
 import type { Minimap } from '../render/minimap';
 import { esc, showChoice } from './dialog';
+import { DiplomacyWindow, statusText } from './diplomacy';
 
 type Selection = { kind: 'unit'; id: number } | { kind: 'city'; id: number } | null;
 
@@ -130,6 +133,7 @@ export class GameController {
   /** Идёт ход ботов: ввод игрока не принимается. */
   private busy = false;
   private bots = new BotRunner();
+  private diplomacy: DiplomacyWindow;
   onNewGame: (() => void) | null = null;
 
   constructor(
@@ -137,10 +141,25 @@ export class GameController {
     private minimap: Minimap,
     private ui: UiElements,
   ) {
+    const controller = this;
+    this.diplomacy = new DiplomacyWindow(
+      {
+        get state() {
+          return controller.state;
+        },
+        get power() {
+          return controller.power;
+        },
+        dispatch: (cmd) => this.dispatch(cmd),
+      },
+      () => this.refresh(),
+    );
     ui.endTurn.addEventListener('click', () => this.endTurn());
     ui.panel.addEventListener('click', (e) => this.onPanelClick(e));
     ui.topbar.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('[data-action="new-game"]')) this.onNewGame?.();
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-action="new-game"]')) this.onNewGame?.();
+      if (target.closest('[data-action="diplomacy"]')) this.diplomacy.open();
     });
     window.addEventListener('keydown', (e) => this.onKey(e));
     renderer.onViewChange = () => minimap.drawView();
@@ -155,6 +174,7 @@ export class GameController {
   }
 
   start(state: GameState): void {
+    this.diplomacy.close();
     this.state = state;
     this.selection = null;
     document.body.classList.remove('no-game');
@@ -205,9 +225,14 @@ export class GameController {
     if (sel?.kind === 'unit' && !findUnit(state, sel.id)) this.selection = null;
     this.refresh();
     const declared = state.powers[this.power].wars.filter((w) => !warsBefore.includes(w)).map((w) => state.powers[w].name);
-    if (declared.length) this.toast(`Вам объявили войну: ${declared.join(', ')}`);
+    if (declared.length) this.toast(`Новая война: ${declared.join(', ')} — подробности в журнале`);
     if (!state.powers[this.power].alive) this.showDefeat();
-    else this.selectNextUnit(false);
+    else {
+      this.selectNextUnit(false);
+      // Предложения ботов ждут ответа до конца хода — показываем их сразу.
+      if (pendingProposals(state, this.power).length) this.diplomacy.open();
+      else this.diplomacy.update();
+    }
   }
 
   private setBusy(busy: boolean): void {
@@ -234,6 +259,7 @@ export class GameController {
     this.renderPanel();
     this.renderLog();
     this.renderTileInfo();
+    this.diplomacy.update();
   }
 
   // ---------- Ввод ----------
@@ -289,7 +315,7 @@ export class GameController {
     if (reason !== 'С этой державой нет войны') return reason;
     const owner = (unitAt(this.state, tile) ?? cityAt(this.state, tile))?.owner;
     const name = owner !== undefined ? this.state.powers[owner].name : '';
-    return `С державой ${name} нет войны — объявить её можно в панели их города или юнита`;
+    return `С державой ${name} нет войны — объявить её можно в окне дипломатии (D)`;
   }
 
   onTileHover(tile: number): void {
@@ -313,6 +339,8 @@ export class GameController {
       if (unit) this.foundCity(unit);
     } else if (e.key === 'n' || e.key === 'N' || e.key === 'т' || e.key === 'Т') {
       this.selectNextUnit(true);
+    } else if (e.key === 'd' || e.key === 'D' || e.key === 'в' || e.key === 'В') {
+      this.diplomacy.open();
     }
   }
 
@@ -333,8 +361,8 @@ export class GameController {
     } else if (action === 'buy-military' && sel?.kind === 'city') {
       const unitType = btn.dataset.unit as MilitaryType;
       this.dispatch({ type: 'BuyMilitary', power: this.power, cityId: sel.id, unitType });
-    } else if (action === 'declare-war') {
-      this.confirmWar(Number(btn.dataset.target));
+    } else if (action === 'diplomacy') {
+      this.diplomacy.open(Number(btn.dataset.target));
     } else if (action === 'select-city') {
       const unit = this.selectedUnit();
       const city = unit && cityAt(this.state, unit.tile);
@@ -433,16 +461,6 @@ export class GameController {
     ];
     showChoice(`${city.name}: город взят`, '', options, (choice) =>
       this.dispatch({ type: 'CaptureCity', power: this.power, unitId: unit.id, cityId: city.id, choice }),
-    );
-  }
-
-  private confirmWar(target: number): void {
-    const name = this.state.powers[target].name;
-    showChoice(
-      `Объявить войну: ${name}?`,
-      'Мира в этой версии ещё нет — война продлится до конца партии.',
-      [{ value: target, label: 'Объявить войну', description: `юниты и города державы ${name} станут целями` }],
-      (t) => this.dispatch({ type: 'DeclareWar', power: this.power, target: t }),
     );
   }
 
@@ -595,6 +613,7 @@ export class GameController {
         ${icon} <b>${value}</b><span class="delta">(${signed(income[id].total)})</span>
       </span>`;
     const wars = p.wars.map((w) => state.powers[w].name);
+    const pending = pendingProposals(state, this.power).length;
     const deterrence = deterrenceIndex(state, this.power);
     this.ui.topbar.innerHTML = `
       <span class="power"><span class="swatch" style="background:${p.color}"></span>${esc(p.name)}</span>
@@ -603,13 +622,20 @@ export class GameController {
       ${res('culture', '🎭', p.culture)}
       <span class="res" title="${esc(deterrenceTitle('Индекс сдерживания: насколько дорого на вас напасть. Боты нападают, если их армия сильнее.', deterrence))}">🛡 <b>${fmt(deterrence.total)}</b></span>
       ${wars.length ? `<span class="wars">⚔ Война: ${esc(wars.join(', '))}</span>` : ''}
+      ${p.suzerain !== NONE ? `<span class="wars" title="Вассал платит дань, воюет на стороне сюзерена и не заключает союзов">Вассал державы ${esc(state.powers[p.suzerain].name)}</span>` : ''}
+      ${state.coalitionLeader !== NONE ? `<span class="wars" title="Держава близка к победе завоеванием: остальные собирают коалицию">⚠ Лидер: ${esc(state.powers[state.coalitionLeader].name)}</span>` : ''}
       <span class="spacer"></span>
+      <button data-action="diplomacy" title="Отношения, договоры, мир и войны (D)">🤝 Дипломатия${pending ? ` · 📜 ${pending}` : ''}</button>
       <span class="turn">Ход ${state.turn} · сид ${state.settings.seed}</span>
       <button data-action="new-game">Новая игра</button>`;
   }
 
   private renderLog(): void {
-    const entries = this.state.log.filter((e) => e.power === NONE || e.power === this.power).slice(-60).reverse();
+    const me = this.power;
+    const entries = this.state.log
+      .filter((e) => e.power === me || (e.power === NONE && (!e.audience || e.audience.includes(me))))
+      .slice(-60)
+      .reverse();
     this.ui.log.innerHTML = entries
       .map((e) => `<div class="entry"><span class="t">${e.turn}</span>${esc(e.text)}</div>`)
       .join('');
@@ -637,24 +663,21 @@ export class GameController {
     </button>${reason && showReason ? `<div class="reason">${esc(reason)}</div>` : ''}`;
   }
 
-  /** Статус отношений с чужой державой и кнопка объявления войны. */
+  /** Статус отношений с чужой державой и вход в окно дипломатии. */
   private relationBlock(owner: number): string {
-    const p = this.state.powers[owner];
-    const name = p.name;
-    const deterrence = deterrenceIndex(this.state, owner);
+    const state = this.state;
+    const p = state.powers[owner];
+    const deterrence = deterrenceIndex(state, owner);
     const character = p.character ? characterDef(p.character) : null;
     let html = character
       ? `<div class="row" title="${esc(character.description)}"><span>Характер</span><span>${esc(character.name)}</span></div>`
       : '';
     html += `<div class="row" title="${esc(deterrenceTitle('Насколько дорого на них напасть', deterrence))}"><span>Индекс сдерживания</span><span>${fmt(deterrence.total)}</span></div>`;
-    if (atWar(this.state, this.power, owner)) return html + `<div class="row"><span>Отношения</span><span class="reason">война</span></div>`;
-    return html + `<div class="row"><span>Отношения</span><span>мир</span></div><div class="actions">${this.actionButton(
-      'declare-war',
-      `Объявить войну: ${name}`,
-      null,
-      { type: 'DeclareWar', power: this.power, target: owner },
-      `data-target="${owner}"`,
-    )}</div>`;
+    html += `<div class="row"><span>Статус</span><span class="${atWar(state, this.power, owner) ? 'reason' : ''}">${esc(statusText(state, this.power, owner))}</span></div>`;
+    if (!state.powers[this.power].met.includes(owner)) return html;
+    const op = opinion(state, owner, this.power);
+    html += `<div class="row" title="${esc(breakdownTitle(op).replace(/ за ход$/, ''))}"><span>Отношение к вам</span><span>${signed(op.total)}</span></div>`;
+    return html + `<div class="actions"><button data-action="diplomacy" data-target="${owner}">🤝 Дипломатия: ${esc(p.name)} (D)</button></div>`;
   }
 
   private unitPanel(unit: Unit): string {

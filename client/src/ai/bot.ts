@@ -1,10 +1,11 @@
-// Ход одного бота: решение о войне, армия, покупки, жители. Все действия — обычные команды ядра.
+// Ход одного бота: дипломатия, решение о войне, армия, покупки, жители, подарки. Все действия — обычные команды ядра.
 
 import type { Command } from '../core/commands';
 import { aiConfig } from '../core/data';
 import { foundCityPrice } from '../core/economy';
 import type { GameState } from '../core/types';
 import { createContext, myCities, myUnits } from './context';
+import { diplomacyTurn, giftsTurn } from './diplomacy';
 import { armyNeed, chooseUnitType, militaryTurn } from './military';
 import { purchasesTurn } from './purchases';
 import { citizensTurn, claimableTiles, findSites, settlersAllowed } from './settlers';
@@ -15,6 +16,7 @@ export function playBotTurn(state: GameState, power: number, deadline = Infinity
   const ctx = createContext(state, power, deadline);
   if (!state.powers[power].alive) return ctx.commands;
 
+  diplomacyTurn(ctx);
   decideWar(ctx);
   const unitType = chooseUnitType(ctx);
   militaryTurn(ctx, unitType);
@@ -34,5 +36,6 @@ export function playBotTurn(state: GameState, power: number, deadline = Infinity
   });
 
   citizensTurn(ctx, sites, need > 0 ? unitType : null);
+  giftsTurn(ctx);
   return ctx.commands;
 }

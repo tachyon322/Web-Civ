@@ -63,6 +63,86 @@ export interface Power {
   met: number[];
   /** Державы, с которыми идёт война (симметрично у обеих сторон). */
   wars: number[];
+  /** Сюзерен, если держава — вассал; иначе NONE. */
+  suzerain: number;
+  /** Что держава помнит о других: подарки, нарушенные договоры, освобождённые города. */
+  memories: Memory[];
+}
+
+/** Вид памяти — ключ в data/diplomacy.json → memories. */
+export type MemoryKind =
+  | 'gift'
+  | 'culture'
+  | 'betrayal'
+  | 'betrayalSeen'
+  | 'attackedTrader'
+  | 'recentWar'
+  | 'cityTaken'
+  | 'plundered'
+  | 'liberated'
+  | 'joinedWar'
+  | 'tributePaid'
+  | 'tributeDemanded'
+  | 'tributeRefused'
+  | 'treatyCancelled'
+  | 'rebellion';
+
+/** Запомненное событие: значение со временем угасает (см. hold и fade в данных). */
+export interface Memory {
+  /** О ком память. */
+  about: number;
+  kind: MemoryKind;
+  /** Начальное значение для отношений. */
+  value: number;
+  turn: number;
+  /** Подпись вместо стандартной, например «Нарушили договор с Римом». */
+  label?: string;
+}
+
+export type PactKind = 'war' | 'truce' | 'trade' | 'alliance';
+
+/** Состояние пары держав: война, перемирие, договор или союз. a < b. */
+export interface Pact {
+  kind: PactKind;
+  a: number;
+  b: number;
+  /** Ход начала. */
+  since: number;
+  /** Для перемирия — ход, с которого оно уже не действует; иначе 0. */
+  until: number;
+}
+
+/** Условия мира с точки зрения предлагающего. */
+export interface PeaceTerms {
+  /** Золото, которое предлагающий платит получателю. */
+  giveGold: number;
+  /** Город, который предлагающий отдаёт (NONE — нет). */
+  giveCity: number;
+  /** Золото, которое получатель платит предлагающему. */
+  takeGold: number;
+  /** Город, который получатель отдаёт предлагающему (NONE — нет). */
+  takeCity: number;
+  /** Кто становится вассалом другого: NONE, предлагающий или получатель. */
+  vassal: number;
+}
+
+export type Deal =
+  | { kind: 'trade' }
+  | { kind: 'alliance' }
+  | { kind: 'union' }
+  | { kind: 'joinWar'; enemy: number; gold: number }
+  | { kind: 'tribute'; gold: number }
+  | { kind: 'peace'; terms: PeaceTerms };
+
+export type DealKind = Deal['kind'];
+
+export interface Proposal {
+  id: number;
+  from: number;
+  to: number;
+  deal: Deal;
+  turn: number;
+  status: 'pending' | 'accepted' | 'declined' | 'expired';
 }
 
 export interface City {
@@ -110,9 +190,11 @@ export interface Unit {
 
 export interface LogEntry {
   turn: number;
-  /** Кого касается запись; NONE — всех. */
+  /** Кого касается запись; NONE — всех (или тех, кто в audience). */
   power: number;
   text: string;
+  /** Если задано — запись видят только эти державы. */
+  audience?: number[];
 }
 
 export interface GameSettings {
@@ -133,6 +215,12 @@ export interface GameState {
   powers: Power[];
   cities: City[];
   units: Unit[];
+  /** Войны, перемирия, договоры и союзы между парами держав. */
+  pacts: Pact[];
+  /** Предложения игроку (ждут ответа) и недавние ответы. */
+  proposals: Proposal[];
+  /** Держава, против которой собирается коалиция (близка к победе), или NONE. */
+  coalitionLeader: number;
   nextId: number;
   log: LogEntry[];
 }

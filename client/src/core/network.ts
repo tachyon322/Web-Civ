@@ -1,13 +1,12 @@
-// Сеть городов: связные компоненты своей территории. Вражеский юнит на клетке блокирует её.
-// Союзная территория войдёт в сеть на этапе 4.
+// Сеть городов: связные компоненты своей и союзной территории. Вражеский юнит на клетке блокирует её.
 
 import { neighbors } from './hex';
-import { atWar, mapSize } from './state';
+import { atWar, friendsOf, mapSize } from './state';
 import { NONE, type GameState } from './types';
 
 /**
- * Метка компоненты для каждой клетки державы (NONE — не в сети).
- * Клетки с одинаковой меткой связаны непрерывной цепочкой своей территории.
+ * Метка компоненты для каждой клетки сети державы (NONE — не в сети).
+ * Клетки с одинаковой меткой связаны непрерывной цепочкой своей или союзной территории.
  */
 export function computeNetwork(state: GameState, power: number): Int32Array {
   const size = mapSize(state);
@@ -15,17 +14,21 @@ export function computeNetwork(state: GameState, power: number): Int32Array {
   const label = new Int32Array(owner.length).fill(NONE);
   const blocked = new Uint8Array(owner.length);
   for (const u of state.units) if (atWar(state, power, u.owner)) blocked[u.tile] = 1;
+  const member = new Uint8Array(state.powers.length);
+  member[power] = 1;
+  for (const f of friendsOf(state, power)) member[f] = 1;
+  const inNet = (t: number) => owner[t] !== NONE && member[owner[t]] === 1 && !blocked[t];
 
   let next = 0;
   const stack: number[] = [];
   for (let start = 0; start < owner.length; start++) {
-    if (owner[start] !== power || blocked[start] || label[start] !== NONE) continue;
+    if (!inNet(start) || label[start] !== NONE) continue;
     label[start] = next;
     stack.push(start);
     while (stack.length) {
       const t = stack.pop()!;
       for (const n of neighbors(size, t)) {
-        if (owner[n] === power && !blocked[n] && label[n] === NONE) {
+        if (inNet(n) && label[n] === NONE) {
           label[n] = next;
           stack.push(n);
         }

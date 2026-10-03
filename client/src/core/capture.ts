@@ -1,10 +1,12 @@
 // Захват городов: при прочности 0 воин или всадник входит в город, и победитель выбирает,
 // присоединить, разграбить или освободить его.
 
-import { balance, buildingDef, unitDef } from './data';
+import { balance, buildingDef, diplomacyConfig, unitDef } from './data';
 import { log, removeUnit } from './entities';
 import { distance } from './hex';
 import { atWar, citiesOf, cityMaxDurability, citySlots, findCity, mapSize, unitAt } from './state';
+import { forgetPower, remember } from './relations';
+import { turnsWord } from './text';
 import { NONE, type City, type GameState, type Unit } from './types';
 import { updateExplored } from './visibility';
 
@@ -27,13 +29,7 @@ export function plunderCooldown(state: GameState, city: City): number {
   return Math.max(0, city.plunderBlockedUntil - state.turn);
 }
 
-export function turnsWord(n: number): string {
-  const d = n % 10;
-  const dd = n % 100;
-  if (d === 1 && dd !== 11) return 'ход';
-  if (d >= 2 && d <= 4 && (dd < 12 || dd > 14)) return 'хода';
-  return 'ходов';
-}
+export { turnsWord };
 
 /** Почему недоступен вариант после захвата; null — доступен. */
 export function choiceBlocker(state: GameState, unit: Unit, city: City, choice: CaptureChoice): string | null {
@@ -94,9 +90,8 @@ export function checkElimination(state: GameState, power: number): void {
   if (!p.alive || citiesOf(state, power).length) return;
   p.alive = false;
   for (const u of state.units.filter((x) => x.owner === power)) removeUnit(state, u.id);
-  // С выбывшей державой больше никто не воюет.
-  for (const other of state.powers) other.wars = other.wars.filter((w) => w !== power);
-  p.wars = [];
+  // С выбывшей державой больше никто не воюет, её договоры исчезают, вассалы свободны.
+  forgetPower(state, power);
   log(state, NONE, `${p.name} выбывает из игры`);
 }
 
@@ -109,13 +104,16 @@ export function captureCity(state: GameState, unit: Unit, cityId: number, choice
   unit.fortified = false;
   unit.routeTarget = NONE;
 
+  const ev = diplomacyConfig.events;
   if (choice === 'annex') {
+    remember(state, victim.id, me.id, 'cityTaken', ev.cityTaken);
     unit.tile = city.tile;
     log(state, unit.owner, `${city.name} присоединён`);
     log(state, victim.id, `${city.name} захвачен державой ${me.name}`);
     transferCity(state, city, unit.owner);
     city.purchasedThisTurn = true;
   } else if (choice === 'plunder') {
+    remember(state, victim.id, me.id, 'plundered', ev.plundered);
     const loot = plunderLoot(city);
     me.gold += loot.gold;
     me.science += loot.science;
@@ -130,6 +128,7 @@ export function captureCity(state: GameState, unit: Unit, cityId: number, choice
     log(state, victim.id, `${city.name} разграблен державой ${me.name}`);
   } else {
     const founder = state.powers[city.founder];
+    remember(state, founder.id, me.id, 'liberated', ev.liberated, `Освободили наш город ${city.name}`);
     log(state, unit.owner, `${city.name} освобождён и возвращён державе ${founder.name}`);
     log(state, founder.id, `${city.name} освобождён державой ${me.name} и возвращён нам`);
     transferCity(state, city, city.founder);

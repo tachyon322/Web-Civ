@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runBots } from '../src/ai';
+import { playBotTurn, runBots } from '../src/ai';
 import { createContext } from '../src/ai/context';
 import { attackValue, breachLevel, chooseTargetCity } from '../src/ai/military';
 import { findSites } from '../src/ai/settlers';
@@ -10,7 +10,9 @@ import { aiConfig, nationDef } from '../src/core/data';
 import { deterrenceIndex } from '../src/core/deterrence';
 import { computeIncome } from '../src/core/economy';
 import { newGame } from '../src/core/game';
-import { citiesOf, unitsOf } from '../src/core/state';
+import { atWar, citiesOf, hasPact, unitsOf } from '../src/core/state';
+import { pendingProposals } from '../src/core/diplomacy';
+import { addPact, remember } from '../src/core/relations';
 import { addCitizen, addCity, addUnit, at, blankState, declareWar } from './helpers';
 
 /** Держава 1 — бот, всё вокруг разведано; встреча с игроком уже была. */
@@ -106,6 +108,104 @@ describe('решение о войне', () => {
     s.powers[1].met.push(0);
     s.powers[1].explored.fill(0);
     expect(chooseWarTarget(createContext(s, 1, Infinity))).toBeNull();
+  });
+
+  it('не нападает на союзника, во время перемирия и на тех, кто ему нравится', () => {
+    const setup = () => {
+      const s = botVsHuman();
+      addCity(s, 0, 2, 5, true);
+      addCity(s, 1, 9, 5, true);
+      for (const col of [8, 10, 11]) addUnit(s, 1, 'warrior', col, 6, 2);
+      return s;
+    };
+    const ally = setup();
+    addPact(ally, 0, 1, 'alliance');
+    expect(chooseWarTarget(createContext(ally, 1, Infinity))).toBeNull();
+    const truce = setup();
+    addPact(truce, 0, 1, 'truce', truce.turn + 5);
+    expect(chooseWarTarget(createContext(truce, 1, Infinity))).toBeNull();
+    const friend = setup();
+    remember(friend, 1, 0, 'gift', 30);
+    remember(friend, 1, 0, 'liberated', 40);
+    expect(chooseWarTarget(createContext(friend, 1, Infinity))).toBeNull();
+  });
+
+  it('договор нарушает только агрессор', () => {
+    const s = botVsHuman();
+    addCity(s, 0, 2, 5, true);
+    addCity(s, 1, 9, 5, true);
+    for (const col of [8, 10, 11]) addUnit(s, 1, 'warrior', col, 6, 2);
+    addPact(s, 0, 1, 'trade');
+    expect(chooseWarTarget(createContext(s, 1, Infinity))).toBe(0);
+    s.powers[1].character = 'trader';
+    expect(chooseWarTarget(createContext(s, 1, Infinity))).toBeNull();
+  });
+
+  it('союзники цели, которые вступятся, входят в риск', () => {
+    const s = blankState(24, 12, 3);
+    s.powers[1].explored.fill(1);
+    for (const [a, b] of [[0, 1], [1, 2], [0, 2]]) {
+      s.powers[a].met.push(b);
+      s.powers[b].met.push(a);
+    }
+    s.turn = aiConfig.war.minTurn;
+    addCity(s, 0, 2, 5, true);
+    addCity(s, 1, 9, 5, true);
+    addCity(s, 2, 18, 5, true);
+    for (const col of [8, 10, 11]) addUnit(s, 1, 'warrior', col, 6, 2);
+    s.powers[2].character = 'diplomat';
+    for (const col of [17, 19, 20]) addUnit(s, 2, 'warrior', col, 6, 3);
+    expect(chooseWarTarget(createContext(s, 1, Infinity))).toBe(0);
+    addPact(s, 0, 2, 'alliance');
+    expect(chooseWarTarget(createContext(s, 1, Infinity))).toBeNull();
+  });
+});
+
+describe('дипломатия ботов', () => {
+  /** Два бота (1 и 2) и игрок; все знакомы, города далеко друг от друга. */
+  function bots(): ReturnType<typeof blankState> {
+    const s = blankState(30, 12, 3);
+    s.powers[1].character = 'trader';
+    s.powers[2].character = 'trader';
+    for (const p of s.powers) for (const q of s.powers) if (p.id !== q.id) p.met.push(q.id);
+    addCity(s, 0, 3, 5, true);
+    addCity(s, 1, 14, 5, true);
+    addCity(s, 2, 25, 5, true);
+    return s;
+  }
+
+  it('боты заключают торговые договоры с теми, кто не неприятен', () => {
+    const s = bots();
+    playBotTurn(s, 1);
+    expect(hasPact(s, 1, 2, 'trade')).toBe(true);
+    // Игроку — предложение, которое ждёт ответа.
+    expect(pendingProposals(s, 0).some((p) => p.from === 1 && p.deal.kind === 'trade')).toBe(true);
+  });
+
+  it('проигрывающий бот предлагает мир, и другой бот соглашается, когда война затянулась', () => {
+    const s = bots();
+    declareWar(s, 1, 2);
+    s.pacts.find((p) => p.kind === 'war')!.since = s.turn - 15;
+    for (const col of [23, 24, 26]) addUnit(s, 2, 'warrior', col, 7, 3);
+    playBotTurn(s, 1);
+    expect(atWar(s, 1, 2)).toBe(false);
+    expect(hasPact(s, 1, 2, 'truce')).toBe(true);
+  });
+
+  it('бот предлагает игроку мир, а не ждёт выбывания', () => {
+    const s = bots();
+    declareWar(s, 0, 1);
+    s.pacts.find((p) => p.kind === 'war')!.since = s.turn - 15;
+    playBotTurn(s, 1);
+    expect(pendingProposals(s, 0).some((p) => p.from === 1 && p.deal.kind === 'peace')).toBe(true);
+  });
+
+  it('торговец с лишним золотом дарит тому, с кем до договора осталось немного', () => {
+    const s = bots();
+    s.powers[1].gold = 1000;
+    remember(s, 2, 1, 'treatyCancelled', -25);
+    playBotTurn(s, 1);
+    expect(s.powers[2].memories.some((m) => m.kind === 'gift' && m.about === 1)).toBe(true);
   });
 });
 

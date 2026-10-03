@@ -1,8 +1,8 @@
-// Конец хода: доходы, выстрелы городов, рост, восстановление и снабжение юнитов, маршруты.
+// Конец хода: доходы, выстрелы городов, рост, дипломатия, восстановление и снабжение юнитов, маршруты.
 
 import { forecastCityShot } from './combat';
 import { balance, unitDef } from './data';
-import { updateContacts } from './diplomacy';
+import { diplomacyNewTurn, expireProposals, updateContacts } from './diplomacy';
 import { cityGrowthPerTurn, computeIncome } from './economy';
 import { log, removeUnit } from './entities';
 import { neighbors } from './hex';
@@ -122,7 +122,9 @@ export function advanceTurn(state: GameState): void {
   collectIncome(state);
   cityShots(state);
   growCities(state);
+  expireProposals(state);
   state.turn++;
+  diplomacyNewTurn(state);
   upkeepUnits(state);
   continueRoutes(state);
   for (const power of state.powers) {

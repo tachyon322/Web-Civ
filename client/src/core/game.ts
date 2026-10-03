@@ -56,10 +56,15 @@ export function newGame(settings: NewGameSettings): GameState {
         cityNamesUsed: 0,
         met: [],
         wars: [],
+        suzerain: NONE,
+        memories: [],
       };
     }),
     cities: [],
     units: [],
+    pacts: [],
+    proposals: [],
+    coalitionLeader: NONE,
     nextId: 1,
     log: [],
   };

@@ -1,7 +1,8 @@
 // Доходы и цены. Каждая цифра собирается из слагаемых, чтобы интерфейс мог показать разбивку.
 
-import { balance, buildingDef, buildings, specialYields } from './data';
-import { citiesOf, isLand, unitPeople, unitsOf } from './state';
+import { balance, buildingDef, buildings, diplomacyConfig, specialYields } from './data';
+import { borderTiles } from './relations';
+import { citiesOf, isLand, unitPeople, unitsOf, vassalsOf } from './state';
 import { SPECIALS, type City, type GameState } from './types';
 
 export type ResourceId = 'gold' | 'science' | 'culture';
@@ -26,7 +27,8 @@ function add(b: Breakdown, label: string, value: number): void {
   b.total += value;
 }
 
-export function computeIncome(state: GameState, power: number): Income {
+/** Доход без дани: города, здания, особые клетки, сложность, торговля, содержание. */
+function baseIncome(state: GameState, power: number): Income {
   const income: Income = {
     gold: { total: 0, items: [] },
     science: { total: 0, items: [] },
@@ -56,9 +58,43 @@ export function computeIncome(state: GameState, power: number): Income {
   if (bonus) {
     for (const res of ['gold', 'science', 'culture'] as const) add(income[res], 'Сложность', Math.round(income[res].total * bonus));
   }
+  add(income.gold, 'Торговые договоры', tradeGold(state, power));
   const people = unitsOf(state, power).reduce((sum, u) => sum + unitPeople(u), 0);
   add(income.gold, 'Содержание юнитов', -people * balance.units.upkeepPerPerson);
   return income;
+}
+
+/** Золото с торговых договоров: каждый даёт обоим, больше при общей границе. */
+export function tradeGold(state: GameState, power: number): number {
+  const cfg = diplomacyConfig.trade;
+  let sum = 0;
+  for (const p of state.pacts) {
+    if (p.kind !== 'trade' || (p.a !== power && p.b !== power)) continue;
+    const partner = p.a === power ? p.b : p.a;
+    sum += cfg.goldBase + (borderTiles(state, power, partner) > 0 ? cfg.goldBorder : 0);
+  }
+  return sum;
+}
+
+/** Дань вассала сюзерену: доля его золотого дохода, если он положительный. */
+export function vassalTribute(state: GameState, vassal: number): number {
+  if (state.powers[vassal].suzerain === -1) return 0;
+  const gold = baseIncome(state, vassal).gold.total;
+  return Math.floor(Math.max(0, gold) * diplomacyConfig.vassal.tributeShare);
+}
+
+export function computeIncome(state: GameState, power: number): Income {
+  const income = baseIncome(state, power);
+  add(income.gold, 'Дань сюзерену', -vassalTribute(state, power));
+  for (const v of vassalsOf(state, power)) add(income.gold, 'Дань вассалов', vassalTribute(state, v));
+  return income;
+}
+
+/** Приход золота до вычета содержания и дани — мера «дохода» для относительной ценности. */
+export function grossGold(state: GameState, power: number): number {
+  return baseIncome(state, power)
+    .gold.items.filter((i) => i.value > 0)
+    .reduce((sum, i) => sum + i.value, 0);
 }
 
 /** Прирост роста города за ход: +1 с каждой привязанной клетки суши. */
