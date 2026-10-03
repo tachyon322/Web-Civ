@@ -1,12 +1,12 @@
 // Экран новой партии: нация, число держав, сложность, сид карты.
 
-import { DIFFICULTIES, MAX_POWERS, balance, nations, type Difficulty, type GameSettings } from '../core';
+import { DIFFICULTIES, MAX_POWERS, balance, characterDef, nations, traitDef, type Difficulty, type GameSettings } from '../core';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000);
 }
 
-export function showNewGameDialog(onStart: (settings: GameSettings) => void, canCancel: boolean): void {
+export function showNewGameDialog(onStart: (settings: GameSettings) => void, onCancel: () => void): void {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   const nationOptions = nations.map((n) => `<option value="${n.id}">${n.name}</option>`).join('');
@@ -20,6 +20,7 @@ export function showNewGameDialog(onStart: (settings: GameSettings) => void, can
       <h1>Новая партия</h1>
       <label for="ng-nation">Нация</label>
       <select id="ng-nation"><option value="">Случайная</option>${nationOptions}</select>
+      <div class="hint" id="ng-trait"></div>
       <label for="ng-powers">Число держав</label>
       <input id="ng-powers" type="number" min="2" max="${MAX_POWERS}" value="${MAX_POWERS}" />
       <label for="ng-difficulty">Сложность</label>
@@ -30,12 +31,21 @@ export function showNewGameDialog(onStart: (settings: GameSettings) => void, can
         <button id="ng-reroll" title="Случайный сид">⟳</button>
       </div>
       <button class="start" id="ng-start">Начать</button>
-      ${canCancel ? '<button class="start" id="ng-cancel" style="background:var(--btn)">Отмена</button>' : ''}
+      <button class="start secondary" id="ng-cancel">Назад</button>
       <div class="hint">ЛКМ — выбрать, ПКМ — идти или перебросить, колесо — масштаб, перетаскивание — сдвиг карты.
-      Enter — завершить ход, F — основать город, N — следующий юнит, D — дипломатия, Esc — снять выбор.</div>
+      Enter — завершить ход, F — основать город, N — следующий юнит, D — дипломатия, P — пути (эпоха, стабильность, способности, победы), Esc — снять выбор.</div>
     </div>`;
   document.body.appendChild(backdrop);
   const $ = <T extends HTMLElement>(id: string) => backdrop.querySelector<T>(`#${id}`)!;
+  const showTrait = () => {
+    const id = $<HTMLSelectElement>('ng-nation').value;
+    const n = nations.find((x) => x.id === id);
+    $('ng-trait').textContent = n
+      ? `${traitDef(n.trait).name}: ${traitDef(n.trait).description}. Боты этой нации чаще — ${characterDef(n.tendency).name.toLowerCase()}.`
+      : `Случайная из ${nations.length}. У каждой нации одна черта — её видно и у соперников в окне дипломатии.`;
+  };
+  $('ng-nation').addEventListener('change', showTrait);
+  showTrait();
   $('ng-reroll').addEventListener('click', () => {
     $<HTMLInputElement>('ng-seed').value = String(randomSeed());
   });
@@ -47,5 +57,8 @@ export function showNewGameDialog(onStart: (settings: GameSettings) => void, can
     backdrop.remove();
     onStart({ seed, powers, humanNation: nation, difficulty });
   });
-  if (canCancel) $('ng-cancel').addEventListener('click', () => backdrop.remove());
+  $('ng-cancel').addEventListener('click', () => {
+    backdrop.remove();
+    onCancel();
+  });
 }

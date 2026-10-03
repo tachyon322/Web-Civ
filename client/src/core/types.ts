@@ -67,6 +67,28 @@ export interface Power {
   suzerain: number;
   /** Что держава помнит о других: подарки, нарушенные договоры, освобождённые города. */
   memories: Memory[];
+  /** Вся заработанная наука — по ней наступают эпохи и считается технологический разрыв. */
+  scienceTotal: number;
+  /** Вся заработанная культура — культурный вес державы (давление, мятежи, утечка мозгов). */
+  cultureTotal: number;
+  /** Стабильность 0..100, пересчитывается после каждой команды и в конце хода. */
+  stability: number;
+  /** Действующие способности: разведка и пропаганда против других, праздник у себя. */
+  effects: Effect[];
+  /** Есть оружие сдерживания. */
+  deterrent: boolean;
+  /** Предупреждение об отделении города при мятежах, или null. */
+  secession: { cityId: number; due: number } | null;
+}
+
+export type EffectKind = 'recon' | 'propaganda' | 'holiday';
+
+export interface Effect {
+  kind: EffectKind;
+  /** На кого действует (праздник — на себя). */
+  target: number;
+  /** Ход, с которого уже не действует. */
+  until: number;
 }
 
 /** Вид памяти — ключ в data/diplomacy.json → memories. */
@@ -85,7 +107,13 @@ export type MemoryKind =
   | 'tributeDemanded'
   | 'tributeRefused'
   | 'treatyCancelled'
-  | 'rebellion';
+  | 'rebellion'
+  | 'propaganda'
+  | 'converted'
+  | 'sabotage'
+  | 'refusedPeace'
+  | 'citySwayed'
+  | 'seceded';
 
 /** Запомненное событие: значение со временем угасает (см. hold и fade в данных). */
 export interface Memory {
@@ -110,6 +138,8 @@ export interface Pact {
   since: number;
   /** Для перемирия — ход, с которого оно уже не действует; иначе 0. */
   until: number;
+  /** Для войны — кто её объявил (агрессор). */
+  by?: number;
 }
 
 /** Условия мира с точки зрения предлагающего. */
@@ -132,7 +162,9 @@ export type Deal =
   | { kind: 'union' }
   | { kind: 'joinWar'; enemy: number; gold: number }
   | { kind: 'tribute'; gold: number }
-  | { kind: 'peace'; terms: PeaceTerms };
+  | { kind: 'peace'; terms: PeaceTerms }
+  /** Призыв к миру: мировое мнение требует от агрессора мира с жертвой. */
+  | { kind: 'callPeace'; victim: number };
 
 export type DealKind = Deal['kind'];
 
@@ -163,6 +195,31 @@ export interface City {
   founder: number;
   /** Ход, начиная с которого город снова можно разграбить (0 — можно сразу). */
   plunderBlockedUntil: number;
+  /** Ход, с которого снова может появиться ополчение. */
+  militiaReadyAt: number;
+  /** Мятеж в присоединённом городе: к кому он хочет вернуться (NONE — мятежа нет) и сколько ходов идёт. */
+  revoltFrom: number;
+  revoltProgress: number;
+  /** Культурное давление соседа: кто давит (NONE — никто) и накопленное значение. */
+  pressureFrom: number;
+  pressure: number;
+  /** Сколько ходов ещё действует фортификация. */
+  fortifyTurns: number;
+  /** Саботаж: отключённое здание и сколько ходов оно ещё не работает. */
+  disabledBuilding: string | null;
+  disabledTurns: number;
+  /** Финальный проект в этом городе. */
+  project: { kind: ProjectKind; stages: number } | null;
+}
+
+export type ProjectKind = 'science' | 'culture';
+
+export type VictoryKind = 'conquest' | 'federation' | 'science' | 'culture';
+
+export interface Victory {
+  power: number;
+  kind: VictoryKind;
+  turn: number;
 }
 
 export type UnitType = 'citizen' | 'warrior' | 'archer' | 'horseman';
@@ -221,6 +278,8 @@ export interface GameState {
   proposals: Proposal[];
   /** Держава, против которой собирается коалиция (близка к победе), или NONE. */
   coalitionLeader: number;
+  /** Итог партии или null, пока она идёт. */
+  winner: Victory | null;
   nextId: number;
   log: LogEntry[];
 }

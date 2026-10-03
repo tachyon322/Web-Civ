@@ -1,12 +1,18 @@
-// Конец хода: доходы, выстрелы городов, рост, дипломатия, восстановление и снабжение юнитов, маршруты.
+// Конец хода: доходы и эпохи, выстрелы городов, ополчение, рост, культура, стабильность и отделение,
+// дипломатия, восстановление и снабжение юнитов, маршруты, победы.
 
 import { forecastCityShot } from './combat';
 import { balance, unitDef } from './data';
-import { diplomacyNewTurn, expireProposals, updateContacts } from './diplomacy';
+import { cultureNewTurn, spawnMilitia } from './culture';
+import { diplomacyNewTurn, expireProposals, logPublic, updateContacts } from './diplomacy';
+import { epochMpBonus, epochName, epochOf } from './epochs';
+import { processSecession, refreshAllStability } from './stability';
+import { checkVictory } from './victory';
 import { cityGrowthPerTurn, computeIncome } from './economy';
-import { log, removeUnit } from './entities';
+import { LOG_LIMIT, log, removeUnit } from './entities';
 import { neighbors } from './hex';
 import { moveTowards } from './movement';
+import { nationTrait } from './nations';
 import {
   atWar,
   cityAt,
@@ -23,12 +29,19 @@ import { NONE, type GameState, type Unit } from './types';
 import { updateExplored } from './visibility';
 
 function collectIncome(state: GameState): void {
+  // Сначала считаем все доходы, потом зачисляем: утечка мозгов и дань зависят от чужих доходов.
+  const incomes = state.powers.map((p) => (p.alive ? computeIncome(state, p.id) : null));
   for (const power of state.powers) {
-    if (!power.alive) continue;
-    const income = computeIncome(state, power.id);
+    const income = incomes[power.id];
+    if (!income) continue;
+    const epoch = epochOf(power);
     power.gold += income.gold.total;
     power.science += income.science.total;
     power.culture += income.culture.total;
+    power.scienceTotal += Math.max(0, income.science.total);
+    power.cultureTotal += Math.max(0, income.culture.total);
+    const now = epochOf(power);
+    if (now > epoch) logPublic(state, [power.id], `${power.name} вступает в эпоху «${epochName(now)}»`);
   }
 }
 
@@ -97,14 +110,20 @@ function upkeepUnits(state: GameState): void {
     if (attrition && state.powers[unit.owner].gold < 0) {
       unit.strength = roundStrength(unit.strength - max * balance.upkeep.debtLossShare);
     }
+    // Черта нации: вражеские военные на её земле теряют силу.
+    const land = owner[unit.tile];
+    const hostile = attrition && land !== NONE && land !== unit.owner && atWar(state, unit.owner, land);
+    const landLoss = hostile ? (nationTrait(state, land).enemyAttrition ?? 0) : 0;
+    if (landLoss) unit.strength = roundStrength(unit.strength - max * landLoss);
     if (unit.strength <= 0) {
       removeUnit(state, unit.id);
-      log(state, unit.owner, `${unitDef(unit.type).name} погиб: ${onOwnLand ? 'дезертирство из-за долгов' : 'нет снабжения'}`);
+      const reason = landLoss ? `${nationTrait(state, land).name.toLowerCase()} врага` : onOwnLand ? 'дезертирство из-за долгов' : 'нет снабжения';
+      log(state, unit.owner, `${unitDef(unit.type).name} погиб: ${reason}`);
       continue;
     }
     unit.fortified = !unit.moved;
     unit.moved = false;
-    unit.mp = unitBaseMp(unit) + (onOwnLand ? balance.units.ownTerritoryMpBonus : 0);
+    unit.mp = unitBaseMp(state, unit) + epochMpBonus(state, unit.owner) + (onOwnLand ? balance.units.ownTerritoryMpBonus : 0);
   }
 }
 
@@ -121,10 +140,15 @@ function continueRoutes(state: GameState): void {
 export function advanceTurn(state: GameState): void {
   collectIncome(state);
   cityShots(state);
+  spawnMilitia(state);
   growCities(state);
   expireProposals(state);
   state.turn++;
+  cultureNewTurn(state);
+  refreshAllStability(state);
   diplomacyNewTurn(state);
+  processSecession(state);
+  refreshAllStability(state);
   upkeepUnits(state);
   continueRoutes(state);
   for (const power of state.powers) {
@@ -132,4 +156,6 @@ export function advanceTurn(state: GameState): void {
     updateExplored(state, power.id);
     updateContacts(state, power.id);
   }
+  checkVictory(state);
+  if (state.log.length > LOG_LIMIT) state.log.splice(0, state.log.length - LOG_LIMIT);
 }

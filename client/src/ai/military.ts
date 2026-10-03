@@ -112,7 +112,9 @@ function bestAttack(ctx: BotContext, u: Unit, tiles: number[]): { tile: number; 
 }
 
 function captureChoice(ctx: BotContext, u: Unit, city: City): CaptureChoice {
-  const preferred = ctx.character.capture as CaptureChoice;
+  // При низкой стабильности ещё один присоединённый город опасен — бот грабит.
+  const unrest = ctx.state.powers[ctx.power].stability < aiConfig.paths.plunderBelow;
+  const preferred = (unrest && !city.isCapital ? 'plunder' : ctx.character.capture) as CaptureChoice;
   // Столицы всегда присоединяют.
   if (city.isCapital || choiceBlocker(ctx.state, u, city, preferred)) return 'annex';
   return preferred;

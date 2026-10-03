@@ -2,12 +2,13 @@
 
 import { generateMap } from '../mapgen/generate';
 import { aiConfig, balance, nationDef, nations, unitDef } from './data';
-import { createCity, createUnit, probeUnit } from './entities';
+import { blankPower, createCity, createUnit, probeUnit } from './entities';
 import { neighbors } from './hex';
 import { canStop } from './pathfinding';
 import { createRng, deriveSeed } from './rng';
 import { isLand } from './state';
 import { CHARACTERS, NONE, type Character, type Difficulty, type GameSettings, type GameState } from './types';
+import { refreshAllStability } from './stability';
 import { updateExplored } from './visibility';
 
 export const MAX_POWERS = 12;
@@ -38,33 +39,13 @@ export function newGame(settings: NewGameSettings): GameState {
     humanPower: 0,
     map: { width: map.width, height: map.height, terrain: map.terrain, special: map.special, starts: map.starts },
     territory: { owner: new Array<number>(n).fill(NONE), city: new Array<number>(n).fill(NONE) },
-    powers: order.map((nationId, id) => {
-      const nation = nations.find((nat) => nat.id === nationId)!;
-      return {
-        id,
-        nationId,
-        name: nation.name,
-        color: nation.color,
-        isHuman: id === 0,
-        character: characters[id],
-        alive: true,
-        gold: balance.start.gold,
-        science: 0,
-        culture: 0,
-        explored: new Array<number>(n).fill(0),
-        capitalId: NONE,
-        cityNamesUsed: 0,
-        met: [],
-        wars: [],
-        suzerain: NONE,
-        memories: [],
-      };
-    }),
+    powers: order.map((nationId, id) => blankPower(id, nationId, id === 0, characters[id], n, balance.start.gold)),
     cities: [],
     units: [],
     pacts: [],
     proposals: [],
     coalitionLeader: NONE,
+    winner: null,
     nextId: 1,
     log: [],
   };
@@ -81,6 +62,7 @@ export function newGame(settings: NewGameSettings): GameState {
     }
   });
   for (const power of state.powers) updateExplored(state, power.id);
+  refreshAllStability(state);
   state.log.push({ turn: 1, power: NONE, text: 'Партия началась' });
   return state;
 }

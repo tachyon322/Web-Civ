@@ -1,0 +1,15 @@
+{
+  "legions":   { "name": "Легионы",      "description": "юнит при слиянии получает звезду ветерана", "mergeStar": 1 },
+  "horde":     { "name": "Орда",         "description": "всадники ходят на 1 клетку дальше", "cavalryMp": 1 },
+  "bushido":   { "name": "Бусидо",       "description": "звезда ветерана даёт +20% вместо +10%", "starBonus": 0.2 },
+  "mandarins": { "name": "Мандарины",    "description": "+20% науки", "science": 0.2 },
+  "wisdom":    { "name": "Дом мудрости", "description": "научные способности на 30% дешевле", "scienceAbilityDiscount": 0.3 },
+  "pyramids":  { "name": "Пирамиды",     "description": "чудеса света на 25% дешевле", "wonderDiscount": 0.25 },
+  "polis":     { "name": "Полисы",       "description": "+20% культуры", "culture": 0.2 },
+  "prestige":  { "name": "Престиж",      "description": "культурное давление переманивает города вдвое быстрее", "pressureFactor": 2 },
+  "merchants": { "name": "Торговцы",     "description": "торговые договоры дают вдвое больше золота", "tradeFactor": 2 },
+  "populous":  { "name": "Многолюдие",   "description": "города растут на 50% быстрее", "growthFactor": 1.5 },
+  "vastness":  { "name": "Просторы",     "description": "лимит клеток каждого города +5; вражеские юниты на твоей земле теряют 10% силы за ход", "tileLimit": 5, "enemyAttrition": 0.1 },
+  "satrapies": { "name": "Сатрапии",     "description": "+2 города без штрафа к стабильности", "freeCities": 2 },
+  "diplomats": { "name": "Дипломаты",    "description": "подарки и культурный обмен в 1,5 раза сильнее", "giftFactor": 1.5 }
+}

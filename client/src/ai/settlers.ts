@@ -1,11 +1,12 @@
 // Жители бота: основывают города на хороших местах, размечают землю вокруг городов,
 // а лишние, когда нужна армия, сливаются в военных.
 
-import { aiConfig, balance } from '../core/data';
+import { aiConfig, balance, pathsConfig } from '../core/data';
 import { foundCityPrice } from '../core/economy';
 import { distance, neighbors, range } from '../core/hex';
 import { canStop } from '../core/pathfinding';
 import { isLand, mapSize, terrainMoveCost } from '../core/state';
+import { freeCities } from '../core/stability';
 import { checkClaim } from '../core/territory';
 import { NONE, S_NONE, type MilitaryType, type Unit } from '../core/types';
 import {
@@ -55,9 +56,18 @@ export function findSites(ctx: BotContext): Site[] {
   return sites.sort((a, b) => b.score - a.score || a.tile - b.tile);
 }
 
+/** Новый город сверх бесплатных снизит стабильность — бот не опускает её ниже порога. */
+export function canExpand(ctx: BotContext): boolean {
+  const { state, power } = ctx;
+  const p = state.powers[power];
+  const free = freeCities(state, power);
+  if (myCities(ctx).length < free) return true;
+  return p.stability + pathsConfig.stability.extraCity >= aiConfig.paths.minStabilityToExpand;
+}
+
 /** Сколько жителей могут одновременно идти основывать города. */
 export function settlersAllowed(ctx: BotContext, sites: Site[]): number {
-  if (!sites.length) return 0;
+  if (!sites.length || !canExpand(ctx)) return 0;
   const price = foundCityPrice(ctx.state, ctx.power);
   const gold = ctx.state.powers[ctx.power].gold;
   // Идём, только если к приходу на место золота хватит.
@@ -103,7 +113,7 @@ export function citizensTurn(ctx: BotContext, sites: Site[], recruitType: Milita
 
   // 1. Основание: житель стоит на хорошем месте и золота хватает; если скоро хватит — ждёт на месте.
   for (const u of citizens) {
-    if (!siteTiles.has(u.tile) || conflicts(ctx, u.tile, taken)) continue;
+    if (!siteTiles.has(u.tile) || conflicts(ctx, u.tile, taken) || !canExpand(ctx)) continue;
     if (exec(ctx, { type: 'FoundCity', power, unitId: u.id })) {
       ctx.busy.add(u.id);
     } else if (settlers < allowed) {

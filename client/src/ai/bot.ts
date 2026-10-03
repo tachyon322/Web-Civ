@@ -1,4 +1,4 @@
-// Ход одного бота: дипломатия, решение о войне, армия, покупки, жители, подарки. Все действия — обычные команды ядра.
+// Ход одного бота: дипломатия, финальные проекты и способности, решение о войне, армия, покупки, жители, подарки. Все действия — обычные команды ядра.
 
 import type { Command } from '../core/commands';
 import { aiConfig } from '../core/data';
@@ -6,6 +6,7 @@ import { foundCityPrice } from '../core/economy';
 import type { GameState } from '../core/types';
 import { createContext, myCities, myUnits } from './context';
 import { diplomacyTurn, giftsTurn } from './diplomacy';
+import { abilitiesTurn, projectsTurn } from './paths';
 import { armyNeed, chooseUnitType, militaryTurn } from './military';
 import { purchasesTurn } from './purchases';
 import { citizensTurn, claimableTiles, findSites, settlersAllowed } from './settlers';
@@ -17,6 +18,8 @@ export function playBotTurn(state: GameState, power: number, deadline = Infinity
   if (!state.powers[power].alive) return ctx.commands;
 
   diplomacyTurn(ctx);
+  projectsTurn(ctx);
+  abilitiesTurn(ctx);
   decideWar(ctx);
   const unitType = chooseUnitType(ctx);
   militaryTurn(ctx, unitType);

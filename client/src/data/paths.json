@@ -1,0 +1,84 @@
+{
+  "epochs": [
+    { "id": "ancient", "name": "Древность", "science": 0, "units": { "citizen": "Житель", "warrior": "Воин", "archer": "Лучник", "horseman": "Всадник" } },
+    { "id": "classical", "name": "Античность", "science": 120, "units": { "citizen": "Житель", "warrior": "Мечник", "archer": "Стрелок", "horseman": "Конник" } },
+    { "id": "medieval", "name": "Средневековье", "science": 400, "units": { "citizen": "Житель", "warrior": "Латник", "archer": "Арбалетчик", "horseman": "Рыцарь" } },
+    { "id": "modern", "name": "Новое время", "science": 1000, "units": { "citizen": "Житель", "warrior": "Мушкетёр", "archer": "Пушкарь", "horseman": "Драгун" } },
+    { "id": "industrial", "name": "Индустрия", "science": 2200, "units": { "citizen": "Житель", "warrior": "Пехотинец", "archer": "Артиллерист", "horseman": "Кавалерист" } }
+  ],
+  "epoch": {
+    "strengthPerEpoch": 0.1,
+    "mpPerEpoch": 1,
+    "freeCitiesPerEpoch": 1
+  },
+  "techGap": {
+    "minRatio": 1.5,
+    "perRatio": 0.25,
+    "max": 0.5
+  },
+  "stability": {
+    "base": 50,
+    "peace": 5,
+    "alliance": 3,
+    "allianceMax": 9,
+    "freeCities": 3,
+    "extraCity": -3,
+    "disconnected": -4,
+    "annexed": -2,
+    "annexedStrongCulture": -5,
+    "warPerTurn": -0.3,
+    "warMaxPerWar": -10,
+    "warAggressorFactor": 1.5,
+    "warCultureLeaderFactor": 1.5,
+    "warMax": -25,
+    "propaganda": -15,
+    "propagandaMax": -30,
+    "debts": -15,
+    "levels": [
+      { "min": 70, "name": "Расцвет", "income": 0.1, "combat": 1 },
+      { "min": 40, "name": "Норма", "income": 0, "combat": 1 },
+      { "min": 20, "name": "Недовольство", "income": -0.2, "combat": 0.8 },
+      { "min": 0, "name": "Мятежи", "income": -0.2, "combat": 0.8 }
+    ],
+    "secessionBelow": 20,
+    "secessionWarningTurns": 3,
+    "vassalRevoltBelow": 40
+  },
+  "culture": {
+    "revoltTurns": 5,
+    "garrisonMinStrength": 2,
+    "pressureRadius": 4,
+    "pressureRatio": 3,
+    "pressureMinCulture": 150,
+    "pressurePerRatio": 1,
+    "pressureMax": 5,
+    "pressureDecay": 5,
+    "pressureThreshold": 100,
+    "militiaIncome": 8,
+    "militiaCooldown": 10,
+    "brainDrainRatio": 2,
+    "brainDrainShare": 0.1,
+    "brainDrainMaxShare": 0.3,
+    "shieldPerCulture": 0.02,
+    "shieldMax": 20,
+    "wonderMarbleDiscount": 0.25
+  },
+  "abilities": {
+    "recon": { "name": "Разведка", "path": "science", "cost": 40, "turns": 5 },
+    "fortify": { "name": "Фортификация", "path": "science", "cost": 50, "turns": 3, "strengthFactor": 3 },
+    "sabotage": { "name": "Саботаж", "path": "science", "cost": 40, "turns": 5 },
+    "deterrent": { "name": "Оружие сдерживания", "path": "science", "cost": 400, "epoch": 4, "levelLoss": 2, "deterrence": 100 },
+    "callPeace": { "name": "Призыв к миру", "path": "culture", "cost": 60, "bonus": 30, "refusal": -15 },
+    "propaganda": { "name": "Пропаганда", "path": "culture", "cost": 50, "turns": 5, "memory": -10 },
+    "convert": { "name": "Переманивание", "path": "culture", "costPerPerson": 15, "memory": -10 },
+    "holiday": { "name": "Праздник", "path": "culture", "cost": 40, "turns": 5, "stability": 15 }
+  },
+  "projects": {
+    "science": { "name": "Великий проект", "stages": [1000, 1500, 2000] },
+    "culture": { "name": "Мировое наследие", "stages": [1000, 1500, 2000], "wonders": 3 }
+  },
+  "victory": {
+    "federationShare": 0.6,
+    "federationMinVassals": 1
+  }
+}

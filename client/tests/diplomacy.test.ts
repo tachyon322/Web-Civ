@@ -256,6 +256,9 @@ describe('мир и перемирие', () => {
 describe('вассалы', () => {
   function vassalState(): GameState {
     const s = three();
+    // Держава 2 крупная, чтобы союз игрока с вассалом не дал победу федерацией.
+    citiesOf(s, 2)[0].level = 5;
+    addCity(s, 2, 25, 9).level = 5;
     declareWar(s, 0, 1);
     for (let i = 0; i < 15; i++) end(s);
     for (let i = 0; i < 6; i++) addUnit(s, 0, 'warrior', 1 + i, 1, 4);

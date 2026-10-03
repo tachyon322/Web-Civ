@@ -35,7 +35,13 @@
     "tributeDemanded": { "label": "Требовали дань", "hold": 10, "fade": 0.5 },
     "tributeRefused": { "label": "Отказали нам в дани", "hold": 10, "fade": 0.5 },
     "treatyCancelled": { "label": "Расторгли договор с нами", "hold": 10, "fade": 0.5 },
-    "rebellion": { "label": "Восстали против нас", "hold": 20, "fade": 0.5 }
+    "rebellion": { "label": "Восстали против нас", "hold": 20, "fade": 0.5 },
+    "propaganda": { "label": "Пропаганда против нас", "hold": 10, "fade": 0.5 },
+    "converted": { "label": "Переманили наш юнит", "hold": 10, "fade": 0.5 },
+    "sabotage": { "label": "Саботаж против нас", "hold": 10, "fade": 0.5 },
+    "refusedPeace": { "label": "Отвергли призыв к миру", "hold": 15, "fade": 0.5 },
+    "citySwayed": { "label": "Переманили наш город", "hold": 20, "fade": 0.5 },
+    "seceded": { "label": "Отделились от нас", "hold": 20, "fade": 0.5 }
   },
   "events": {
     "betrayalVictim": -40,
@@ -54,7 +60,9 @@
     "tributeDemanded": -10,
     "tributeRefused": -10,
     "treatyCancelled": -10,
-    "rebellion": -20
+    "rebellion": -20,
+    "citySwayed": -15,
+    "seceded": -20
   },
   "gift": {
     "valuePerTurnOfIncome": 5,
@@ -105,7 +113,9 @@
     "peaceCityGetPerLevel": 6,
     "peaceCityGivePerLevel": -10,
     "peaceBecomeVassal": -50,
-    "peaceGetVassal": 40
+    "peaceGetVassal": 40,
+    "peaceUnrest": 15,
+    "peaceUnrestBelow": 40
   },
   "coalition": {
     "capitalsShare": 0.25

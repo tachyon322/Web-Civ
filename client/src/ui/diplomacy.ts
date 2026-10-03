@@ -3,10 +3,15 @@
 // Прогноз считается той же функцией ядра, что и ответ бота, — поэтому они не расходятся.
 
 import {
+  NO_TARGET,
   NO_TERMS,
+  abilityCost,
+  allied,
+  pathsConfig,
   accepts,
   atWar,
   characterDef,
+  nationTrait,
   citiesOf,
   dealBlocker,
   dealText,
@@ -240,6 +245,7 @@ export class DiplomacyWindow {
     const character = pt.character ? characterDef(pt.character) : null;
     let html = `<h2><span class="swatch" style="background:${pt.color}"></span>${esc(pt.name)}</h2>
       <div class="sub">${character ? `${esc(character.name)} — ${esc(character.description)}` : 'игрок'}</div>
+      <div class="row"><span>Черта нации</span><span title="${esc(nationTrait(state, t).description)}">${esc(nationTrait(state, t).name)}: ${esc(nationTrait(state, t).description)}</span></div>
       <div class="row"><span>Статус</span><span>${esc(statusText(state, power, t))}</span></div>`;
     if (pt.suzerain !== NONE && pt.suzerain !== power) {
       html += `<div class="row"><span>Сюзерен</span><span>${esc(state.powers[pt.suzerain].name)}</span></div>`;
@@ -262,11 +268,33 @@ export class DiplomacyWindow {
       html += this.joinWarBlock();
       html += this.tributeBlock();
     }
+    html += this.abilitiesBlock();
     if (!atWar(state, power, t) && me.suzerain === NONE && pt.suzerain !== power && me.suzerain !== t) {
       html += `<h3>Война</h3><div class="actions">${this.button(`Объявить войну: ${pt.name}`, { type: 'DeclareWar', power, target: t }, {
         confirm: () => this.confirmWar(t),
         cls: 'danger',
       })}</div>`;
+    }
+    return html;
+  }
+
+  /** Способности против этой державы: разведка, пропаганда, призыв к миру. */
+  private abilitiesBlock(): string {
+    const { state, power } = this.host;
+    const t = this.target;
+    const a = pathsConfig.abilities;
+    const use = (ability: 'recon' | 'propaganda' | 'callPeace', victim = NONE) => ({ ...NO_TARGET, ability, target: t, victim });
+    const row = (label: string, u: ReturnType<typeof use>, note: string) => {
+      const icon = a[u.ability].path === 'science' ? '🔬' : '🎭';
+      return `<div class="deal">${this.button(`${label} (${abilityCost(state, power, u)} ${icon})`, { type: 'UseAbility', power, ...u })}<div class="muted small">${esc(note)}</div></div>`;
+    };
+    let html = '<h3>Способности</h3>';
+    html += row('Разведка', use('recon'), `${a.recon.turns} ходов видны все их юниты`);
+    if (!allied(state, power, t)) html += row('Пропаганда', use('propaganda'), `их стабильность ${pathsConfig.stability.propaganda} на ${a.propaganda.turns} ходов; они это запомнят`);
+    // Призыв к миру — против войн, которые начала эта держава.
+    for (const v of state.powers[t].wars) {
+      if (findPact(state, t, v, 'war')?.by !== t) continue;
+      html += row(`Призыв к миру с державой ${state.powers[v].name}`, use('callPeace', v), 'откажутся — испортят отношения со всеми');
     }
     return html;
   }

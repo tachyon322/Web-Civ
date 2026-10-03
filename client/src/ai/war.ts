@@ -32,6 +32,8 @@ export function chooseWarTarget(ctx: BotContext): number | null {
   const cfg = aiConfig.war;
   if (state.turn < cfg.minTurn) return null;
   if (state.powers[power].wars.length >= cfg.maxOffensiveWars) return null;
+  // Новая война добавит усталости — при низкой стабильности бот не рискует (кроме войны с лидером).
+  const calm = state.powers[power].stability >= aiConfig.paths.warStabilityMin;
   const army = [power, ...vassalsOf(state, power)].reduce((sum, p) => sum + armyStrength(state, p), 0);
   if (army < cfg.minArmy) return null;
   let best: number | null = null;
@@ -41,6 +43,7 @@ export function chooseWarTarget(ctx: BotContext): number | null {
     if (allied(state, power, other.id)) continue;
     if (hasPact(state, power, other.id, 'trade') && !ctx.character.breaksTreaties) continue;
     const leader = other.id === state.coalitionLeader;
+    if (!calm && !leader) continue;
     if (!leader && opinion(state, power, other.id).total > ctx.character.warOpinionMax) continue;
     const { gain } = warGain(ctx, other.id);
     if (gain <= 0) continue;

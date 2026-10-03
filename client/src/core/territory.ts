@@ -16,7 +16,7 @@ export function nearestCityWithFreeLimit(state: GameState, power: number, tile: 
   let bestDist = Infinity;
   for (const city of state.cities) {
     if (city.owner !== power) continue;
-    if ((counts.get(city.id) ?? 0) >= cityTileLimit(city)) continue;
+    if ((counts.get(city.id) ?? 0) >= cityTileLimit(state, city)) continue;
     const d = distance(size, city.tile, tile);
     if (d < bestDist || (d === bestDist && best !== null && city.id < best.id)) {
       best = city;

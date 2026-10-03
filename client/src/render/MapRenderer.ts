@@ -4,7 +4,9 @@
 
 import { Application, Container, Culler, Graphics, Rectangle, Text } from 'pixi.js';
 import { neighborInDirection, neighbors, type MapSize } from '../core/hex';
-import { atWar, cityMaxDurability, unitMaxStrength } from '../core/state';
+import { buildingDef } from '../core/data';
+import { atWar, cityMaxDurability, hasBuildingEffect, unitMaxStrength } from '../core/state';
+import { epochOf } from '../core/epochs';
 import { computeVisible } from '../core/visibility';
 import {
   NONE,
@@ -20,13 +22,21 @@ import {
   type UnitType,
 } from '../core/types';
 import { EDGE_CORNERS, HEX_SIZE, TILT, hexCorners, pixelToTile, tileCenter, worldSize } from './layout';
-import { hexColor, palette } from './palette';
+import { darken, hexColor, palette } from './palette';
 
 const CHUNK = 16;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 2.5;
 /** Ниже этого масштаба подписи и мелкие детали не рисуются. */
 const LABEL_MIN_SCALE = 0.45;
+/** Объём (в пикселях мира): обрыв суши к воде и подъём холмов и гор над равниной. */
+const COAST_DEPTH = 6;
+const ROUGH_LIFT = 3;
+const MOUNTAIN_LIFT = 4;
+
+function terrainLift(type: number): number {
+  return type === T_ROUGH ? ROUGH_LIFT : type === T_MOUNTAIN ? MOUNTAIN_LIFT : 0;
+}
 
 export interface Overlay {
   selectedTile: number;
@@ -57,7 +67,11 @@ export const EMPTY_OVERLAY: Overlay = {
 interface Chunk {
   tiles: number[];
   area: Rectangle;
-  terrain: Graphics;
+  /** Вода, суша (верх и боковые грани), детали (деревья, горы, тени, особые клетки) — отдельно, чтобы
+   * грани и горы соседнего куска не перекрывались его водой и сушей. */
+  water: Graphics;
+  land: Graphics;
+  decor: Graphics;
   territory: Graphics;
   fog: Graphics;
   territorySig: number;
@@ -80,26 +94,75 @@ function drawStar(g: Graphics, cx: number, cy: number, r: number): void {
   g.poly(pts).fill(palette.gold).stroke({ width: 0.8, color: 0x6b5208 });
 }
 
-/** Значок типа юнита белым по цвету державы. */
-function drawUnitGlyph(g: Graphics, type: UnitType, x: number, y: number): void {
-  const white = 0xffffff;
+const WHITE = 0xffffff;
+
+/** Дуга с собственной начальной точкой: иначе PixiJS тянет к ней линию от предыдущей точки пути. */
+function arcFrom(g: Graphics, cx: number, cy: number, r: number, a0: number, a1: number): Graphics {
+  return g.moveTo(cx + r * Math.cos(a0), cy + r * Math.sin(a0)).arc(cx, cy, r, a0, a1);
+}
+
+function drawSword(g: Graphics, x: number, y: number, scale = 1): void {
+  const k = scale;
+  g.poly([x - 1.5 * k, y + 3 * k, x - 1.5 * k, y - 6 * k, x, y - 8.5 * k, x + 1.5 * k, y - 6 * k, x + 1.5 * k, y + 3 * k]).fill(WHITE);
+  g.rect(x - 5 * k, y + 2 * k, 10 * k, 2 * k).fill(WHITE);
+  g.rect(x - 1 * k, y + 4 * k, 2 * k, 4 * k).fill(WHITE);
+}
+
+/** Ружьё по диагонали; со штыком — в последнюю эпоху. */
+function drawGun(g: Graphics, x: number, y: number, bayonet: boolean): void {
+  g.moveTo(x - 6, y + 7).lineTo(x + 6, y - 7).stroke({ width: 2.2, color: WHITE });
+  g.poly([x - 8, y + 6, x - 4, y + 9, x - 2, y + 6, x - 5, y + 4]).fill(WHITE);
+  if (bayonet) g.moveTo(x + 6, y - 7).lineTo(x + 9, y - 10.5).stroke({ width: 1.2, color: WHITE });
+}
+
+function drawHorseHead(g: Graphics, x: number, y: number): void {
+  g.poly([x - 5, y + 7, x - 4, y - 1, x - 1, y - 7, x + 1, y - 9, x + 2, y - 6, x + 7, y - 2, x + 6, y + 1, x + 1, y, x + 2, y + 7]).fill(WHITE);
+}
+
+/**
+ * Значок юнита белым по цвету державы. Эпоха меняет облик, а не тип: воин — дубина, меч, меч со щитом,
+ * мушкет, винтовка со штыком; лучник — лук, лук со стрелами, арбалет, пушка, орудие; всадник — конь,
+ * с уздой, с копьём, с султаном, с саблей.
+ */
+function drawUnitGlyph(g: Graphics, type: UnitType, epoch: number, x: number, y: number): void {
   if (type === 'citizen') {
-    g.circle(x, y - 4, 3).fill(white);
-    g.roundRect(x - 4, y, 8, 6, 2).fill(white);
+    g.circle(x, y - 4, 3).fill(WHITE);
+    g.roundRect(x - 4, y, 8, 6, 2).fill(WHITE);
   } else if (type === 'warrior') {
-    // Меч остриём вверх.
-    g.poly([x - 1.5, y + 3, x - 1.5, y - 6, x, y - 8.5, x + 1.5, y - 6, x + 1.5, y + 3]).fill(white);
-    g.rect(x - 5, y + 2, 10, 2).fill(white);
-    g.rect(x - 1, y + 4, 2, 4).fill(white);
+    if (epoch === 0) {
+      g.poly([x - 1.2, y + 8, x - 2.5, y - 3, x - 1, y - 8, x + 2.5, y - 8, x + 3.5, y - 3, x + 1.2, y + 8]).fill(WHITE);
+    } else if (epoch === 1) drawSword(g, x, y);
+    else if (epoch === 2) {
+      g.poly([x - 8, y - 6, x - 1, y - 6, x - 1, y + 1, x - 4.5, y + 7, x - 8, y + 1]).fill(WHITE);
+      drawSword(g, x + 4, y, 0.85);
+    } else drawGun(g, x, y, epoch >= 4);
   } else if (type === 'archer') {
-    // Лук и стрела.
-    g.arc(x + 1, y, 7.5, Math.PI * 0.6, Math.PI * 1.4).stroke({ width: 2, color: white });
-    g.moveTo(x - 2.5, y - 7).lineTo(x - 2.5, y + 7).stroke({ width: 1, color: white });
-    g.moveTo(x - 4, y).lineTo(x + 7, y).stroke({ width: 1.5, color: white });
-    g.poly([x + 7, y - 2.5, x + 9.5, y, x + 7, y + 2.5]).fill(white);
+    if (epoch <= 1) {
+      arcFrom(g, x + 1, y, 7.5, Math.PI * 0.6, Math.PI * 1.4).stroke({ width: 2, color: WHITE });
+      g.moveTo(x - 2.5, y - 7).lineTo(x - 2.5, y + 7).stroke({ width: 1, color: WHITE });
+      g.moveTo(x - 4, y).lineTo(x + 7, y).stroke({ width: 1.5, color: WHITE });
+      g.poly([x + 7, y - 2.5, x + 9.5, y, x + 7, y + 2.5]).fill(WHITE);
+      if (epoch === 1) {
+        g.moveTo(x - 4, y + 4).lineTo(x + 6, y + 4).stroke({ width: 1.2, color: WHITE });
+        g.poly([x + 6, y + 2.5, x + 8, y + 4, x + 6, y + 5.5]).fill(WHITE);
+      }
+    } else if (epoch === 2) {
+      arcFrom(g, x, y + 2, 8, Math.PI * 1.15, Math.PI * 1.85).stroke({ width: 2, color: WHITE });
+      g.rect(x - 1.2, y - 6, 2.4, 14).fill(WHITE);
+      g.moveTo(x - 7, y - 1).lineTo(x + 7, y - 1).stroke({ width: 1, color: WHITE });
+    } else {
+      // Пушка: ствол и колесо; в последнюю эпоху ствол длиннее.
+      const len = epoch >= 4 ? 13 : 10;
+      g.poly([x - 6, y + 1, x - 6 + len, y - 6, x - 4 + len, y - 3, x - 4, y + 4]).fill(WHITE);
+      g.circle(x - 3, y + 4, 4).stroke({ width: 1.8, color: WHITE });
+      if (epoch >= 4) g.rect(x - 9, y + 6, 4, 2).fill(WHITE);
+    }
   } else {
-    // Голова коня.
-    g.poly([x - 5, y + 7, x - 4, y - 1, x - 1, y - 7, x + 1, y - 9, x + 2, y - 6, x + 7, y - 2, x + 6, y + 1, x + 1, y, x + 2, y + 7]).fill(white);
+    drawHorseHead(g, x, y);
+    if (epoch === 1) g.moveTo(x - 3, y - 4).lineTo(x + 5, y + 1).stroke({ width: 1, color: 0x141414 });
+    else if (epoch === 2) g.moveTo(x - 9, y + 8).lineTo(x + 9, y - 10).stroke({ width: 1.5, color: WHITE });
+    else if (epoch === 3) g.poly([x, y - 8, x - 2, y - 13, x + 3, y - 10]).fill(WHITE);
+    else if (epoch >= 4) arcFrom(g, x - 9, y - 2, 8, -Math.PI * 0.45, Math.PI * 0.1).stroke({ width: 1.6, color: WHITE });
   }
 }
 
@@ -117,7 +180,9 @@ export class MapRenderer {
   readonly world = new Container();
   onViewChange: (() => void) | null = null;
 
-  private terrainLayer = new Container();
+  private waterLayer = new Container();
+  private landLayer = new Container();
+  private decorLayer = new Container();
   private territoryLayer = new Container();
   private reachLayer = new Graphics();
   private cityLayer = new Container();
@@ -133,12 +198,16 @@ export class MapRenderer {
   private visible: Uint8Array = new Uint8Array(0);
   private overlay: Overlay = EMPTY_OVERLAY;
   private renderQueued = false;
+  /** «Простая графика»: плоские гексы без граней, теней и объёмных деталей. */
+  private simple = false;
 
   private constructor(app: Application) {
     this.app = app;
     this.world.addChild(
-      this.terrainLayer,
+      this.waterLayer,
+      this.landLayer,
       this.territoryLayer,
+      this.decorLayer,
       this.reachLayer,
       this.cityLayer,
       this.unitLayer,
@@ -170,7 +239,7 @@ export class MapRenderer {
   setGame(state: GameState): void {
     this.state = state;
     this.size = { width: state.map.width, height: state.map.height };
-    for (const layer of [this.terrainLayer, this.territoryLayer, this.fogLayer, this.cityLayer, this.labelLayer]) {
+    for (const layer of [this.waterLayer, this.landLayer, this.decorLayer, this.territoryLayer, this.fogLayer, this.cityLayer, this.labelLayer]) {
       layer.removeChildren().forEach((c) => c.destroy());
     }
     this.cityViews.clear();
@@ -185,18 +254,22 @@ export class MapRenderer {
         const chunk: Chunk = {
           tiles,
           area,
-          terrain: new Graphics(),
+          water: new Graphics(),
+          land: new Graphics(),
+          decor: new Graphics(),
           territory: new Graphics(),
           fog: new Graphics(),
           territorySig: NaN,
           fogSig: NaN,
         };
-        for (const g of [chunk.terrain, chunk.territory, chunk.fog]) {
+        for (const g of [chunk.water, chunk.land, chunk.decor, chunk.territory, chunk.fog]) {
           g.cullable = true;
           g.cullArea = area;
         }
         this.drawTerrain(chunk);
-        this.terrainLayer.addChild(chunk.terrain);
+        this.waterLayer.addChild(chunk.water);
+        this.landLayer.addChild(chunk.land);
+        this.decorLayer.addChild(chunk.decor);
         this.territoryLayer.addChild(chunk.territory);
         this.fogLayer.addChild(chunk.fog);
         this.chunks.push(chunk);
@@ -228,6 +301,19 @@ export class MapRenderer {
     this.drawUnits();
     this.drawOverlay();
     this.requestRender();
+  }
+
+  /** Переключает «простую графику»: местность перерисовывается, остальное — при следующем кадре. */
+  setSimpleGraphics(simple: boolean): void {
+    if (simple === this.simple) return;
+    this.simple = simple;
+    for (const chunk of this.chunks) this.drawTerrain(chunk);
+    for (const view of this.cityViews.values()) view.key = '';
+    if (this.state) this.refresh(this.state);
+  }
+
+  get simpleGraphics(): boolean {
+    return this.simple;
   }
 
   setOverlay(overlay: Overlay): void {
@@ -339,35 +425,67 @@ export class MapRenderer {
   }
 
   private drawTerrain(chunk: Chunk): void {
-    const g = chunk.terrain;
+    const { water, land, decor } = chunk;
+    for (const g of [water, land, decor]) g.clear();
     const state = this.state!;
     const { terrain, special } = state.map;
-    // Сначала все основания, потом объёмные детали — чтобы горы не перекрывались соседними гексами.
+    const simple = this.simple;
+    // Вода — ниже суши: в объёмном виде её гекс опущен, а у берега видна боковая грань суши.
     for (const t of chunk.tiles) {
+      if (terrain[t] !== T_WATER) continue;
       const { x, y } = tileCenter(this.size, t);
-      const pts = hexCorners(x, y, 1.01);
-      const type = terrain[t];
-      let color: number;
-      if (type === T_WATER) {
-        const coast = neighbors(this.size, t).some((n) => terrain[n] !== T_WATER);
-        color = coast ? palette.shallowWater : palette.deepWater;
-      } else if (type === T_ROUGH) {
-        color = palette.rough;
-      } else if (type === T_MOUNTAIN) {
-        color = palette.mountainShade;
-      } else {
-        color = (t * 2654435761) >>> 0 > 2147483648 ? palette.plains : palette.plainsAlt;
-      }
-      g.poly(pts).fill(color);
-      if (type !== T_WATER) g.poly(hexCorners(x, y, 1)).stroke({ width: 1, color: palette.gridLine, alpha: 0.12 });
+      const coast = neighbors(this.size, t).some((n) => terrain[n] !== T_WATER);
+      water.poly(hexCorners(x, y, 1.01)).fill(coast ? palette.shallowWater : palette.deepWater);
+      if (coast && !simple) water.poly(hexCorners(x, y, 0.75)).fill({ color: 0xffffff, alpha: 0.05 });
     }
+    // Суша по рядам сверху вниз: нижний ряд перекрывает грани верхнего.
+    for (const t of chunk.tiles) {
+      const type = terrain[t];
+      if (type === T_WATER) continue;
+      const { x, y } = tileCenter(this.size, t);
+      let color: number;
+      if (type === T_ROUGH) color = palette.rough;
+      else if (type === T_MOUNTAIN) color = simple ? palette.mountain : palette.mountainShade;
+      else color = (t * 2654435761) >>> 0 > 2147483648 ? palette.plains : palette.plainsAlt;
+      const lift = simple ? 0 : terrainLift(type);
+      if (!simple) this.drawSides(land, t, x, y - lift, lift, color);
+      land.poly(hexCorners(x, y - lift, 1.01)).fill(color);
+      land.poly(hexCorners(x, y - lift, 1)).stroke({ width: 1, color: palette.gridLine, alpha: 0.12 });
+    }
+    // Детали поверх: тени, деревья, горы, особые клетки.
     for (const t of chunk.tiles) {
       const { x, y } = tileCenter(this.size, t);
       const type = terrain[t];
-      if (type === T_ROUGH) this.drawTrees(g, x, y, t);
-      else if (type === T_MOUNTAIN) this.drawMountain(g, x, y);
+      if (simple) {
+        if (type === T_MOUNTAIN) decor.poly([x - 10, y + 6, x, y - 10, x + 10, y + 6]).fill(palette.mountainShade);
+        else if (type === T_ROUGH) decor.poly([x - 5, y + 4, x, y - 6, x + 5, y + 4]).fill(palette.tree);
+      } else if (type === T_ROUGH) this.drawTrees(decor, x, y - ROUGH_LIFT, t);
+      else if (type === T_MOUNTAIN) this.drawMountain(decor, x, y - MOUNTAIN_LIFT);
       const sp = special[t];
-      if (sp !== 0) this.drawSpecial(g, x, y, sp);
+      if (sp !== 0) this.drawSpecial(decor, x, y - (simple ? 0 : terrainLift(type)), sp);
+    }
+  }
+
+  /**
+   * Боковые грани гекса: нижние рёбра, вытянутые вниз до соседа ниже. Высота грани — разница высот:
+   * у берега — обрыв к воде, у холма — его подъём над равниной.
+   */
+  private drawSides(g: Graphics, t: number, x: number, y: number, lift: number, color: number): void {
+    const { terrain } = this.state!.map;
+    const top = hexCorners(x, y, 1.01);
+    // Нижние рёбра: углы 1→2 (юго-восток) и 2→3 (юго-запад); соседи — направления 5 (ЮВ) и 4 (ЮЗ).
+    const edges: [number, number, number][] = [
+      [1, 2, 5],
+      [2, 3, 4],
+    ];
+    for (const [a, b, dir] of edges) {
+      const n = neighborInDirection(this.size, t, dir);
+      const below = n < 0 || terrain[n] === T_WATER ? -COAST_DEPTH : terrainLift(terrain[n]);
+      const h = lift - below;
+      if (h <= 0) continue;
+      const shade = below < 0 ? palette.cliff : darken(color, 0.72);
+      const [ax, ay, bx, by] = [top[a * 2], top[a * 2 + 1], top[b * 2], top[b * 2 + 1]];
+      g.poly([ax, ay, bx, by, bx, by + h, ax, ay + h]).fill(dir === 5 ? shade : darken(shade, 0.85));
     }
   }
 
@@ -381,13 +499,16 @@ export class MapRenderer {
       const jitter = ((seed * (i + 3) * 7919) % 5) - 2;
       const tx = x + dx + jitter;
       const ty = y + dy * TILT;
+      g.ellipse(tx + 3, ty + 3, 6, 2.2).fill({ color: 0x000000, alpha: 0.18 });
       g.poly([tx, ty - 10, tx + 6, ty + 2, tx - 6, ty + 2]).fill(palette.tree);
+      g.poly([tx, ty - 10, tx + 6, ty + 2, tx + 1, ty + 2]).fill({ color: 0x000000, alpha: 0.15 });
       g.rect(tx - 1, ty + 2, 2, 3).fill(0x4a3626);
     });
   }
 
   private drawMountain(g: Graphics, x: number, y: number): void {
     const base = y + 8;
+    g.poly([x - 2, y - 22, x + 16, base, x + 26, base + 3, x + 6, base + 3]).fill({ color: 0x000000, alpha: 0.18 });
     g.poly([x - 18, base, x - 2, y - 22, x + 16, base]).fill(palette.mountain);
     g.poly([x - 2, y - 22, x + 16, base, x + 4, base]).fill(palette.mountainShade);
     g.poly([x - 7, y - 11, x - 2, y - 22, x + 3, y - 12, x - 2, y - 14]).fill(palette.snow);
@@ -467,7 +588,18 @@ export class MapRenderer {
     for (const city of state.cities) {
       if (!explored[city.tile]) continue;
       alive.add(city.id);
-      const key = `${city.owner}|${city.level}|${city.name}|${city.isCapital}|${city.durability}|${cityMaxDurability(city)}`;
+      const key = [
+        city.owner,
+        city.level,
+        city.name,
+        city.isCapital,
+        city.durability,
+        cityMaxDurability(city),
+        hasBuildingEffect(city, 'walls'),
+        city.buildings.filter((b) => buildingDef(b).wonder).length,
+        city.project ? `${city.project.kind}${city.project.stages}` : '',
+        this.simple,
+      ].join('|');
       let view = this.cityViews.get(city.id);
       if (view && view.key !== key) {
         view.body.destroy();
@@ -492,7 +624,17 @@ export class MapRenderer {
     const color = hexColor(state.powers[city.owner].color);
     const { x, y } = tileCenter(this.size, city.tile);
     const body = new Graphics();
+    if (!this.simple) {
+      // Основание с толщиной и тенью.
+      body.ellipse(x + 4, y + 13, 24, 7).fill({ color: 0x000000, alpha: 0.25 });
+      body.poly(hexCorners(x, y + 4, 0.7)).fill(darken(color, 0.55)).stroke({ width: 2, color: 0x1a1a1a });
+    }
     body.poly(hexCorners(x, y, 0.7)).fill(color).stroke({ width: 2, color: 0x1a1a1a });
+    if (hasBuildingEffect(city, 'walls')) {
+      body.poly(hexCorners(x, y, 0.78)).stroke({ width: 3, color: palette.wall });
+      const c = hexCorners(x, y, 0.78);
+      for (let k = 0; k < 6; k++) body.rect(c[k * 2] - 2.5, c[k * 2 + 1] - 2.5, 5, 5).fill(palette.wall).stroke({ width: 1, color: 0x333333 });
+    }
     // Домики: число растёт с уровнем города.
     const houses = Math.min(3, 1 + Math.floor(city.level / 2));
     for (let i = 0; i < houses; i++) {
@@ -510,6 +652,21 @@ export class MapRenderer {
         star.push(sx + r * Math.cos(a), sy + r * Math.sin(a));
       }
       body.poly(star).fill(palette.gold).stroke({ width: 1, color: 0x6b5208 });
+    }
+    // Чудеса света — золотые купола справа, финальный проект — флаг слева.
+    const wonders = city.buildings.filter((b) => buildingDef(b).wonder).length;
+    for (let i = 0; i < Math.min(3, wonders); i++) {
+      const wx = x + 17 + i * 3;
+      const wy = y - 8 - i * 5;
+      arcFrom(body, wx, wy, 4, Math.PI, 0).fill(palette.gold).stroke({ width: 1, color: 0x6b5208 });
+      body.rect(wx - 4, wy, 8, 2).fill(palette.gold);
+    }
+    if (city.project) {
+      const fx = x - 18;
+      const fy = y - 18;
+      body.rect(fx, fy, 1.5, 16).fill(0x222222);
+      body.poly([fx + 1.5, fy, fx + 11, fy + 3, fx + 1.5, fy + 7]).fill(city.project.kind === 'science' ? 0x7fb3ff : 0xd58bff);
+      for (let i = 0; i < city.project.stages; i++) body.circle(fx + 4 + i * 3, fy + 10, 1.2).fill(0xffffff);
     }
     // Прочность — квадратики над городом: заполненные — оставшаяся.
     const maxDur = cityMaxDurability(city);
@@ -557,10 +714,17 @@ export class MapRenderer {
     const uy = onCity ? y + 2 : y - 4;
     const color = hexColor(state.powers[unit.owner].color);
     const enemy = atWar(state, state.humanPower, unit.owner);
-    g.ellipse(ux, uy + 12, 11, 4).fill({ color: 0x000000, alpha: 0.3 });
+    const outline = { width: enemy ? 3 : 2, color: enemy ? 0xe0342b : 0x141414 };
     if (selected) g.circle(ux, uy, 16).stroke({ width: 3, color: palette.highlight });
-    g.circle(ux, uy, 12).fill(color).stroke({ width: enemy ? 3 : 2, color: enemy ? 0xe0342b : 0x141414 });
-    drawUnitGlyph(g, unit.type, ux, uy);
+    if (this.simple) g.circle(ux, uy, 12).fill(color).stroke(outline);
+    else {
+      // Фишка с толщиной и тенью: нижний диск темнее, верхний — цвет державы.
+      g.ellipse(ux + 3, uy + 13, 12, 4).fill({ color: 0x000000, alpha: 0.3 });
+      g.circle(ux, uy + 3, 12).fill(darken(color, 0.6)).stroke(outline);
+      g.circle(ux, uy, 12).fill(color).stroke(outline);
+      arcFrom(g, ux, uy, 9, Math.PI * 1.1, Math.PI * 1.6).stroke({ width: 2, color: 0xffffff, alpha: 0.35 });
+    }
+    drawUnitGlyph(g, unit.type, epochOf(state.powers[unit.owner]), ux, uy);
 
     // Уровень — точки над фишкой, сила — полоска под ней.
     for (let i = 0; i < unit.level; i++) {

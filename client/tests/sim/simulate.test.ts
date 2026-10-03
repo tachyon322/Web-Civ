@@ -5,6 +5,8 @@ import { it } from 'vitest';
 import { runBots } from '../../src/ai';
 import { execute } from '../../src/core/commands';
 import { armyStrength } from '../../src/core/deterrence';
+import { wondersOwned } from '../../src/core/buildings';
+import { epochOf } from '../../src/core/epochs';
 import { newGame } from '../../src/core/game';
 import { citiesOf, unitsOf } from '../../src/core/state';
 import type { Difficulty } from '../../src/core/types';
@@ -29,6 +31,7 @@ it.skipIf(!env.SIM)('симуляция партии ботов', () => {
       console.log(
         `  ${p.name.padEnd(10)} ${(p.character ?? 'игрок').padEnd(12)} ${p.alive ? '' : '[выбыл] '}` +
           `городов ${cities.length} (${cities.map((c) => c.level).join('')}), золото ${p.gold}, ` +
+          `эпоха ${epochOf(p)}, стаб ${p.stability}, наука ${p.science}/${p.scienceTotal}, культура ${p.culture}/${p.cultureTotal}, чудес ${wondersOwned(s, p.id)}, ` +
           `жителей ${unitsOf(s, p.id).filter((u) => u.type === 'citizen').length}, армия ${armyStrength(s, p.id)}, ` +
           `войны: ${p.wars.map((w) => s.powers[w].name).join(', ') || '—'}` +
           `${p.suzerain >= 0 ? `, сюзерен: ${s.powers[p.suzerain].name}` : ''}`,
@@ -40,7 +43,7 @@ it.skipIf(!env.SIM)('симуляция партии ботов', () => {
     console.log(`  Союзы: ${pacts('alliance')}`);
     console.log(`  Перемирия: ${pacts('truce')}`);
   };
-  for (let t = 0; t < turns; t++) {
+  for (let t = 0; t < turns && !s.winner; t++) {
     const t0 = performance.now();
     runBots(s, { includeHuman: !env.PASSIVE, budgetMs: 1e9 });
     const ms = performance.now() - t0;
@@ -51,7 +54,7 @@ it.skipIf(!env.SIM)('симуляция партии ботов', () => {
   }
   console.log('\nСобытия:');
   const seen = new Set<string>();
-  for (const e of s.log.filter((x) => /Объявлена война|вступает в войну|выбывает|захвачен державой|разграблен державой|освобождён державой|^Мир|^Союз|вассалом|унию|дань|коалиция|восстаёт|расторгает/.test(x.text))) {
+  for (const e of s.log.filter((x) => /Объявлена война|вступает в войну|выбывает|захвачен державой|разграблен державой|освобождён державой|^Мир|^Союз|вассалом|унию|дань|коалиция|восстаёт|расторгает|эпоху|чудо|этап|Победа|Мятежи|культурным влиянием|возвращается|сдерживания|сгорает/.test(x.text))) {
     const key = `${e.turn}:${e.text}`;
     if (seen.has(key)) continue;
     seen.add(key);
