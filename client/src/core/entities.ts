@@ -83,6 +83,7 @@ export function createCity(state: GameState, power: number, tile: number, isCapi
     disabledBuilding: null,
     disabledTurns: 0,
     project: null,
+    specialists: { scientist: 0, artisan: 0, merchant: 0 },
   };
   city.durability = cityMaxDurability(city);
   state.cities.push(city);

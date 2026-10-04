@@ -129,7 +129,7 @@ export function showMainMenu(host: MenuHost, inGame: boolean): void {
         <button data-action="new"><b>Новая партия</b><span>нация, число держав, сложность, сид карты</span></button>
         ${inGame && current ? '<button data-action="save"><b>Сохранить</b><span>в слот или в файл</span></button>' : ''}
         <button data-action="load"><b>Загрузить</b><span>из слота или из файла</span></button>
-        <button data-action="settings"><b>Настройки</b><span>простая графика</span></button>
+        <button data-action="settings"><b>Настройки</b><span>графика и звук</span></button>
       </div>
       ${host.saves.available ? '' : '<div class="reason">Браузер не даёт сохранять данные на этом сайте — сохранения недоступны.</div>'}
       <div class="credits">Иконки: <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a> (CC BY 3.0)</div>
@@ -282,13 +282,27 @@ export function showSettingsDialog(host: MenuHost): void {
       <h1>Настройки</h1>
       <label class="check"><input type="checkbox" id="simple" ${s.simpleGraphics ? 'checked' : ''} />
         Простая графика <span class="muted small">— плоские гексы без граней, теней и объёма; легче для слабых компьютеров</span></label>
+      <label class="slider">Эффекты <input type="range" id="sfx" min="0" max="100" value="${Math.round(s.sfxVolume * 100)}" /></label>
+      <label class="slider">Музыка <input type="range" id="music" min="0" max="100" value="${Math.round(s.musicVolume * 100)}" /></label>
+      <label class="check"><input type="checkbox" id="muted" ${s.muted ? 'checked' : ''} />
+        Без звука <span class="muted small">— клавиша M в игре</span></label>
       <button class="start secondary" data-action="close">Закрыть</button>
     </div>`,
     (action, _el, m) => {
       if (action === 'close') m.close();
     },
   );
-  modal.root.querySelector<HTMLInputElement>('#simple')!.addEventListener('change', (e) => {
+  const input = (id: string) => modal.root.querySelector<HTMLInputElement>(`#${id}`)!;
+  input('simple').addEventListener('change', (e) => {
     host.applySettings({ ...host.settings(), simpleGraphics: (e.target as HTMLInputElement).checked });
+  });
+  input('sfx').addEventListener('input', (e) => {
+    host.applySettings({ ...host.settings(), sfxVolume: Number((e.target as HTMLInputElement).value) / 100 });
+  });
+  input('music').addEventListener('input', (e) => {
+    host.applySettings({ ...host.settings(), musicVolume: Number((e.target as HTMLInputElement).value) / 100 });
+  });
+  input('muted').addEventListener('change', (e) => {
+    host.applySettings({ ...host.settings(), muted: (e.target as HTMLInputElement).checked });
   });
 }

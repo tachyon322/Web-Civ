@@ -77,13 +77,26 @@
     "upkeepPerPerson": 1,
     "boughtUnitsCanMove": true,
     "transferCost": 1,
-    "barracksLevel": 2,
-    "barracksPriceInCitizens": 2
+    "militaryPricePerPerson": 1
   },
   "vision": {
     "unit": 2,
     "city": 2,
     "territory": 1
+  },
+  "specialists": {
+    "basePrice": 20,
+    "priceStep": 10,
+    "kinds": {
+      "scientist": { "name": "Учёный", "plural": "учёных", "yields": { "science": 2 }, "currencies": ["gold", "science"] },
+      "artisan": { "name": "Мастер", "plural": "мастеров", "yields": { "culture": 2 }, "currencies": ["gold", "culture"] },
+      "merchant": { "name": "Купец", "plural": "купцов", "yields": { "gold": 2 }, "currencies": ["gold"] }
+    }
+  },
+  "improvements": {
+    "gold": { "name": "Рудник", "yields": { "gold": 3 }, "basePrice": 50, "priceStep": 10 },
+    "marble": { "name": "Каменоломня", "yields": { "culture": 2 }, "basePrice": 50, "priceStep": 10, "wonderDiscount": 0.1 },
+    "ruins": { "name": "Раскопки", "yields": { "science": 3 }, "basePrice": 50, "priceStep": 10 }
   },
   "specials": {
     "gold": {

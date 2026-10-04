@@ -18,9 +18,25 @@ import {
   cityGrowthThreshold,
   cityMaxDurability,
   citySlots,
+  cityUnitLevel,
+  usedSlots,
+  specialistCount,
+  specialistPrice,
+  improvableTiles,
+  improvementFor,
+  improvementPrice,
+  SPECIALIST_KINDS,
+  type SpecialistKind,
+  militaryPrice,
   cityStrength,
   cityStrengthParts,
   cityTileLimit,
+  landLeft,
+  landLimit,
+  landTiles,
+  citiesOf,
+  unitsOf,
+  bordersTerritory,
   cityTiles,
   characterDef,
   checkClaim,
@@ -55,7 +71,6 @@ import {
   findUnit,
   forecastAttack,
   foundCityPrice,
-  hasBuildingEffect,
   plunderCooldown,
   plunderLoot,
   turnsWord,
@@ -70,6 +85,7 @@ import {
   isJumpStep,
   isLand,
   type BuildingDef,
+  type Currency,
   type Breakdown,
   type CaptureChoice,
   type City,
@@ -80,12 +96,13 @@ import {
   type Unit,
 } from '../core';
 import { BotRunner } from '../ai/client';
-import { buildingDef, specialYields, unitDef } from '../core/data';
+import { buildingDef, specialistDefs, specialYields, unitDef } from '../core/data';
 import { computeVisible } from '../core/visibility';
-import { EMPTY_OVERLAY, type MapRenderer, type Overlay } from '../render/MapRenderer';
+import { emptyOverlay, type MapRenderer, type Overlay } from '../render/MapRenderer';
 import type { Minimap } from '../render/minimap';
 import { esc, showChoice } from './dialog';
 import { escIcons, icon } from './icons';
+import type { Cue } from '../audio/sfx';
 import { PathsWindow } from './paths';
 import { DiplomacyWindow, statusText } from './diplomacy';
 
@@ -110,6 +127,10 @@ export interface UiElements {
 
 const SPECIAL_NAMES: Record<string, string> = { gold: 'Золотая жила', marble: 'Мрамор', ruins: 'Древние руины' };
 const RES_NAMES: Record<string, string> = { gold: 'золото', science: 'наука', culture: 'культура' };
+const RES_GENITIVE: Record<string, string> = { gold: 'золота', science: 'науки', culture: 'культуры' };
+const RES_TOKENS: Record<string, string> = { gold: '🪙', science: '🔬', culture: '🎭' };
+/** «за каждого учёного». */
+const SPECIALIST_ONE: Record<SpecialistKind, string> = { scientist: 'учёного', artisan: 'мастера', merchant: 'купца' };
 const TYPE_HINTS: Record<MilitaryType, string> = {
   warrior: 'основная пехота, захватывает города; сильнее против всадников',
   archer: 'бьёт с 2 клеток без ответного урона, бонус против городов; сильнее против воинов',
@@ -140,13 +161,20 @@ function unitTitle(state: GameState, unit: Unit): string {
   return `${name}${unit.type === 'citizen' ? '' : ` ${unit.level} ур.`}`;
 }
 
-function buildingSummary(b: BuildingDef): string {
-  if (b.effect === 'barracks') return 'военные юниты сразу 2-го уровня';
-  if (b.effect === 'walls') return `+${b.durability ?? 1} к прочности, +${b.strength ?? 0} к силе города`;
+/** Что даёт здание; для покупки улучшения — ещё и какое здание оно заменит. */
+function buildingSummary(b: BuildingDef, purchase = false): string {
+  const instead = purchase && b.upgradeOf ? `, вместо «${buildingDef(b.upgradeOf).name}»` : '';
+  if (b.effect === 'barracks') return `военные юниты сразу ${b.unitLevel}-го уровня${instead}`;
+  if (b.effect === 'walls') return `+${b.durability ?? 0} к прочности, +${b.strength ?? 0} к силе города${instead}`;
   const parts = Object.entries(b.yields).map(([k, v]) => `+${v} ${RES_NAMES[k]}`);
   if (b.stability) parts.push(`+${b.stability} к стабильности`);
   if (b.strength) parts.push(`+${b.strength} к силе города`);
-  if (b.upgradeOf) parts.push(`вместо «${buildingDef(b.upgradeOf).name}»`);
+  if (b.perSpecialist) {
+    const per = b.perSpecialist;
+    for (const [k, v] of Object.entries(per.yields)) parts.push(`+${v} ${RES_NAMES[k]} за каждого ${SPECIALIST_ONE[per.kind]} в городе`);
+  }
+  if (b.bonus) for (const [k, v] of Object.entries(b.bonus)) parts.push(`+${Math.round((v ?? 0) * 100)}% ${RES_GENITIVE[k]} всей державе`);
+  if (purchase && b.upgradeOf) parts.push(`вместо «${buildingDef(b.upgradeOf).name}»`);
   if (b.wonder) parts.unshift('чудо света');
   return parts.join(', ');
 }
@@ -175,6 +203,12 @@ export class GameController {
   onTurnEnd: ((state: GameState) => void) | null = null;
   /** Партия закончилась для игрока: победа (своя или чужая) или выбывание. */
   onGameOver: ((state: GameState) => void) | null = null;
+  /** Звуковой эффект события. */
+  onSound: ((cue: Cue) => void) | null = null;
+  /** Идёт ли у игрока война (для настроения музыки). */
+  onWarState: ((atWar: boolean) => void) | null = null;
+  /** Клавиша M — выключить или включить звук. */
+  onToggleSound: (() => void) | null = null;
 
   constructor(
     private renderer: MapRenderer,
@@ -244,16 +278,95 @@ export class GameController {
 
   private dispatch(cmd: Command): boolean {
     if (this.busy) return false;
+    const before = this.soundSnapshot(cmd);
     const result = execute(this.state, cmd);
     if (!result.ok) {
+      this.sound('error');
       this.toast(result.reason);
       return false;
     }
+    this.playCommandSound(cmd, before);
     const sel = this.selection;
     if (sel?.kind === 'unit' && !findUnit(this.state, sel.id)) this.selection = null;
     this.refresh();
     this.checkGameOver();
     return true;
+  }
+
+  // ---------- Звук ----------
+
+  private sound(cue: Cue | null, delayMs = 0): void {
+    if (!cue || !this.onSound) return;
+    if (delayMs) window.setTimeout(() => this.onSound?.(cue), delayMs);
+    else this.onSound(cue);
+  }
+
+  /** Что было до команды — чтобы понять по результату, какой звук нужен. */
+  private soundSnapshot(cmd: Command) {
+    const state = this.state;
+    const unit = 'unitId' in cmd ? findUnit(state, cmd.unitId) : undefined;
+    return {
+      land: landTiles(state, this.power),
+      mine: unitsOf(state, this.power).length,
+      others: state.units.length - unitsOf(state, this.power).length,
+      cities: citiesOf(state, this.power).length,
+      epoch: epochOf(state.powers[this.power]),
+      wars: state.powers[this.power].wars.length,
+      unitTile: unit?.tile ?? NONE,
+      unitMp: unit?.mp ?? 0,
+    };
+  }
+
+  private playCommandSound(cmd: Command, before: ReturnType<GameController['soundSnapshot']>): void {
+    const state = this.state;
+    const p = state.powers[this.power];
+    if (epochOf(p) > before.epoch) return this.sound('epoch');
+    const killed = state.units.length - unitsOf(state, this.power).length < before.others;
+    const lost = unitsOf(state, this.power).length < before.mine;
+    switch (cmd.type) {
+      case 'Move': {
+        const unit = findUnit(state, cmd.unitId);
+        if (!unit || unit.tile === before.unitTile) return;
+        if (landTiles(state, this.power) > before.land) return this.sound('claim');
+        const spent = before.unitMp - unit.mp;
+        if (distance(state.map, before.unitTile, unit.tile) > spent) return this.sound('jump');
+        return this.sound(unit.type === 'horseman' ? 'hooves' : 'step');
+      }
+      case 'Attack': {
+        const unit = findUnit(state, cmd.unitId);
+        this.sound(unit && unitDef(unit.type).range > 1 ? 'arrow' : 'melee');
+        if (killed || lost) this.sound('death', 380);
+        return;
+      }
+      case 'CaptureCity':
+        return this.sound('capture');
+      case 'FoundCity':
+        return this.sound('found');
+      case 'BuyCitizen':
+      case 'BuyMilitary':
+      case 'BuySpecialist':
+      case 'Gift':
+        return this.sound('coins');
+      case 'BuyImprovement':
+        return this.sound('build');
+      case 'BuyBuilding':
+        return this.sound(buildingDef(cmd.buildingId).wonder ? 'wonder' : 'build');
+      case 'BuyProjectStage':
+        return this.sound('wonder');
+      case 'Merge':
+        return this.sound('merge');
+      case 'DeclareWar':
+        return this.sound('war');
+      case 'UseAbility':
+        return this.sound('ability');
+      case 'CultureExchange':
+      case 'Propose':
+      case 'Respond':
+      case 'CancelPact':
+        return this.sound(p.wars.length < before.wars ? 'peace' : p.wars.length > before.wars ? 'war' : 'diplomacy');
+      default:
+        return;
+    }
   }
 
   /** Итог партии: победа (своя или чужая) — один раз. */
@@ -264,6 +377,7 @@ export class GameController {
     this.onGameOver?.(this.state);
     const name = this.state.powers[w.power].name;
     const mine = w.power === this.power;
+    this.sound(mine ? 'victory' : 'defeat');
     showChoice(
       mine ? 'Победа!' : 'Поражение',
       `${mine ? 'Ваша держава' : name} побеждает на ходу ${w.turn}: ${victoryName(w.kind)}. Можно посмотреть на карту или начать заново.`,
@@ -277,6 +391,8 @@ export class GameController {
     if (this.busy || !this.state.powers[this.power].alive || this.state.winner) return;
     const state = this.state;
     const warsBefore = [...state.powers[this.power].wars];
+    const citiesBefore = citiesOf(state, this.power).length;
+    const epochBefore = epochOf(state.powers[this.power]);
     this.setBusy(true);
     try {
       const commands = await this.bots.play(state);
@@ -298,6 +414,12 @@ export class GameController {
     this.refresh();
     const declared = state.powers[this.power].wars.filter((w) => !warsBefore.includes(w)).map((w) => state.powers[w].name);
     if (declared.length) this.toast(`Новая война: ${declared.join(', ')} — подробности в журнале`);
+    if (!state.winner && state.powers[this.power].alive) {
+      if (declared.length) this.sound('war');
+      else if (citiesOf(state, this.power).length < citiesBefore) this.sound('alarm');
+      else if (epochOf(state.powers[this.power]) > epochBefore) this.sound('epoch');
+      else this.sound('turn');
+    }
     this.onTurnEnd?.(state);
     if (state.winner) this.checkGameOver();
     else if (!state.powers[this.power].alive) this.showDefeat();
@@ -318,6 +440,7 @@ export class GameController {
   private showDefeat(): void {
     if (this.overShown) return;
     this.overShown = true;
+    this.sound('defeat');
     this.onGameOver?.(this.state);
     showChoice(
       'Ваша держава выбыла',
@@ -338,6 +461,7 @@ export class GameController {
     this.renderTileInfo();
     this.diplomacy.update();
     this.paths.update();
+    this.onWarState?.(this.state.powers[this.power].wars.length > 0);
   }
 
   // ---------- Ввод ----------
@@ -361,6 +485,7 @@ export class GameController {
     } else {
       this.selection = null;
     }
+    if (this.selection && (this.selection.kind !== sel?.kind || this.selection.id !== sel?.id)) this.sound('select');
     this.updateOverlay();
     this.renderPanel();
   }
@@ -381,8 +506,20 @@ export class GameController {
       case 'merge':
         this.openMergeDialog(unit, intent.target);
         return;
-      case 'move':
-        this.dispatch({ type: 'Move', power: this.power, unitId: unit.id, target: tile });
+      case 'move': {
+        const path = unit.type === 'citizen' ? findPath(this.state, unit, tile) : null;
+        if (this.dispatch({ type: 'Move', power: this.power, unitId: unit.id, target: tile }) && path) this.explainMissedClaims(path);
+      }
+    }
+  }
+
+  /** Житель прошёл нейтральную землю у границы, но не разметил её из-за лимита — говорим сразу. */
+  private explainMissedClaims(path: number[]): void {
+    const state = this.state;
+    if (landLeft(state, this.power) > 0) return;
+    const missed = path.some((t) => state.territory.owner[t] === NONE && isLand(state, t) && bordersTerritory(state, this.power, t));
+    if (missed) {
+      this.toast(`Земля не размечена: лимит державы исчерпан (${landTiles(state, this.power)} / ${landLimit(state, this.power)}). Лимит растёт вместе с городами.`);
     }
   }
 
@@ -407,6 +544,8 @@ export class GameController {
     if (e.key === 'Enter') {
       e.preventDefault();
       this.endTurn();
+    } else if (e.key === 'm' || e.key === 'M' || e.key === 'ь' || e.key === 'Ь') {
+      this.onToggleSound?.();
     } else if (e.key === 'Escape') {
       this.selection = null;
       this.updateOverlay();
@@ -592,12 +731,16 @@ export class GameController {
 
   private updateOverlay(): void {
     const state = this.state;
-    const overlay: Overlay = { ...EMPTY_OVERLAY };
+    const overlay: Overlay = emptyOverlay();
     const unit = this.selectedUnit();
     const sel = this.selection;
     if (unit) {
       overlay.selectedTile = unit.tile;
-      overlay.reachable = reachableTiles(state, unit).keys();
+      const reach = reachableTiles(state, unit);
+      overlay.reachable = reach.keys();
+      if (unit.type === 'citizen' && landLeft(state, this.power) > 0) {
+        overlay.claimTiles = [...reach.keys()].filter((t) => checkClaim(state, this.power, t).ok);
+      }
       overlay.networkTiles = this.networkCityTiles(unit.tile);
       const range = unitDef(unit.type).range;
       for (const other of state.units) {
@@ -701,6 +844,7 @@ export class GameController {
     const epoch = epochOf(p);
     const next = nextEpochScience(p);
     const epochTitle = `Эпоха: ${epochName(epoch)}\nЗаработано науки: ${p.scienceTotal}${next ? `\nСледующая эпоха — ${epochName(epoch + 1)} при ${next}` : '\nПоследняя эпоха'}`;
+    const landTitle = `Земля державы: ${landTiles(state, this.power)} клеток из лимита ${landLimit(state, this.power)}\nКаждая клетка: +1 золото и +1 к росту города.\nЛимит — сумма по городам (уровень 1–5: 7 / 10 / 13 / 16 / 19), растёт вместе с городами.\nЖитель размечает нейтральную сушу у границы, пока лимит не исчерпан.`;
     const stab = computeStability(state, this.power);
     const level = stabilityLevel(p.stability);
     const stabilityTitle = `Стабильность: ${p.stability} — ${level.name}\n\n${stab.items.map((i) => `${i.label}: ${signed(i.value)}`).join('\n')}\n\nПодробнее — в окне «Пути» (P)`;
@@ -709,6 +853,7 @@ export class GameController {
       ${res('gold', p.gold)}
       ${res('science', p.science)}
       ${res('culture', p.culture)}
+      <span class="res ${landTiles(state, this.power) >= landLimit(state, this.power) ? 'full' : ''}" title="${esc(landTitle)}">${icon('land')} <b>${landTiles(state, this.power)}</b><span class="delta">/ ${landLimit(state, this.power)}</span></span>
       <span class="res" title="${esc(epochTitle)}">${icon('epoch')} <b>${esc(epochName(epoch))}</b></span>
       <span class="res stability ${level.combat !== 1 ? 'bad' : ''}" title="${esc(stabilityTitle)}">${icon('stability')} <b>${p.stability}</b> ${esc(level.name.toLowerCase())}</span>
       <span class="res" title="${esc(deterrenceTitle('Индекс сдерживания: насколько дорого на вас напасть. Боты нападают, если их армия сильнее.', deterrence))}">${icon('deterrence')} <b>${fmt(deterrence.total)}</b></span>
@@ -759,11 +904,19 @@ export class GameController {
   }
 
   /** Кнопка действия; причина отказа берётся из validate. showReason=false — причина уже сказана выше. */
-  private actionButton(action: string, label: string, price: number | null, cmd: Command, extra = '', showReason = true): string {
+  private actionButton(
+    action: string,
+    label: string,
+    price: number | null,
+    cmd: Command,
+    extra = '',
+    showReason = true,
+    currency: Currency = 'gold',
+  ): string {
     const v = validate(this.state, cmd);
     const reason = v.ok ? '' : v.reason;
     return `<button data-action="${action}" ${extra} ${v.ok ? '' : 'disabled'} title="${esc(reason)}">
-      ${esc(label)}${price !== null ? `<span class="price">${price} ${icon('gold')}</span>` : ''}
+      ${esc(label)}${price !== null ? `<span class="price">${price} ${icon(currency)}</span>` : ''}
     </button>${reason && showReason ? `<div class="reason">${esc(reason)}</div>` : ''}`;
   }
 
@@ -818,7 +971,12 @@ export class GameController {
     if (unit.routeTarget !== NONE) html += `<button data-action="cancel-route">Отменить маршрут</button>`;
     if (city && city.owner === this.power) html += `<button data-action="select-city">Открыть город ${esc(city.name)}</button>`;
     html += `</div><div class="note">ПКМ по клетке — идти (дальние цели — маршрутом).`;
-    if (unit.type === 'citizen') html += ` Проходя нейтральную клетку у границы, житель размечает её для ближайшего города со свободным лимитом.`;
+    if (unit.type === 'citizen') {
+      const left = landLeft(state, this.power);
+      html += left > 0
+        ? ` Проходя нейтральную сушу у границы (зелёные клетки), житель делает её своей — ещё ${left} кл. до лимита земли державы.`
+        : ` Лимит земли державы исчерпан — житель ничего не разметит, пока не вырастут города.`;
+    }
     if (unit.level < balance.units.maxLevel) html += ` Фиолетовая рамка — слияние с соседом того же уровня.`;
     if (unitDef(unit.type).military || unit.type === 'citizen') html += ` Красная — цель атаки, оранжевая — город можно захватить.`;
     if (this.networkCityTiles(unit.tile).length) {
@@ -874,8 +1032,13 @@ export class GameController {
       html += `<div class="row"><span>Рост</span><span>максимальный уровень</span></div>`;
     }
     const tiles = cityTiles(state, city.id).length;
-    html += `<div class="row"><span>Клетки</span><span>${tiles} / ${cityTileLimit(state, city)}</span></div>
-      <div class="row"><span>Слоты зданий</span><span>${city.buildings.length} / ${citySlots(city)}</span></div>`;
+    html += `<div class="row"><span title="Клетки, привязанные к городу: +1 к росту каждая">Клетки</span><span title="Вклад города в лимит земли державы">${tiles} · лимиту +${cityTileLimit(state, city)}</span></div>
+      <div class="row"><span>Слоты зданий</span><span>${usedSlots(city)} / ${citySlots(state, city)}</span></div>
+      <div class="row" title="Специалисты: в городе не больше, чем его уровень"><span>Специалисты</span><span>${
+        SPECIALIST_KINDS.filter((k) => city.specialists[k])
+          .map((k) => `${specialistDefs[k].plural} ${city.specialists[k]}`)
+          .join(' · ') || 'нет'
+      } (${specialistCount(city)} / ${city.level})</span></div>`;
     const inc = this.cityIncome(city);
     html += `<div class="row"><span>Даёт за ход</span><span>${icon('gold')} ${inc.gold} · ${icon('science')} ${inc.science} · ${icon('culture')} ${inc.culture}</span></div>`;
     const capital = findCity(state, owner.capitalId);
@@ -901,35 +1064,92 @@ export class GameController {
       '',
       showReason,
     );
-    if (hasBuildingEffect(city, 'barracks')) {
+    const unitLevel = cityUnitLevel(city);
+    if (unitLevel) {
       for (const type of MILITARY_TYPES) {
         html += this.actionButton(
           'buy-military',
-          `${unitDef(type).name} ${balance.units.barracksLevel} ур.`,
-          citizenPrice(state, this.power) * balance.units.barracksPriceInCitizens,
+          `${unitDef(type).name} ${unitLevel} ур.`,
+          militaryPrice(state, this.power, unitLevel),
           { type: 'BuyMilitary', power: this.power, cityId: city.id, unitType: type },
           `data-unit="${type}"`,
           showReason,
         );
       }
     }
+    html += `</div>`;
+
+    // Специалисты: учёного и мастера можно купить и за свою валюту.
+    if (specialistCount(city) < city.level) {
+      html += `<h3 title="Слот не занимают, содержания нет; в городе не больше, чем его уровень">Специалисты</h3><div class="actions">`;
+      for (const kind of SPECIALIST_KINDS) {
+        const def = specialistDefs[kind];
+        const price = specialistPrice(state, this.power, kind);
+        const gives = Object.entries(def.yields).map(([k, v]) => `+${v} ${RES_GENITIVE[k]}`).join(', ');
+        for (const currency of def.currencies) {
+          html += this.cmdButton(`${def.name} (${gives} за ход)`, `${price} ${RES_TOKENS[currency]}`, {
+            type: 'BuySpecialist',
+            power: this.power,
+            cityId: city.id,
+            kind,
+            currency,
+          }, false);
+        }
+      }
+      html += `</div>`;
+    }
+
+    // Здания по группам. Не показываем то, что здесь уже не купить: построенное, чужие чудеса,
+    // дальние шаги цепочек, здания у моря в городе не у моря и чудеса позже следующей эпохи.
     const epoch = epochOf(state.powers[this.power]);
+    const groups: { title: string; items: string[] }[] = [
+      { title: 'Здания', items: [] },
+      { title: 'Державные здания', items: [] },
+      { title: 'Чудеса света', items: [] },
+    ];
+    let noSlots = false;
     for (const b of buildings) {
-      // Не показываем то, что здесь уже не купить: построенное, чужие чудеса, неподходящие улучшения,
-      // и то, что откроется позже следующей эпохи.
       const blocker = buildingBlocker(state, this.power, city, b);
-      if (blocker && /^(Здание уже|Уже есть улучш|Сначала нужно|Чудо уже)/.test(blocker)) continue;
+      if (blocker && /^(Здание уже|Уже есть|Сначала нужно|Чудо уже|Только в городе у моря)/.test(blocker)) continue;
       if ((b.epoch ?? 0) > epoch + 1) continue;
-      html += this.actionButton(
-        'buy-building',
-        `${b.name} (${buildingSummary(b)})`,
-        buildingPrice(state, this.power, b.id, city),
-        { type: 'BuyBuilding', power: this.power, cityId: city.id, buildingId: b.id },
-        `data-building="${b.id}"`,
-        showReason,
+      if (blocker === 'Нет свободных слотов') {
+        noSlots = true;
+        continue;
+      }
+      const group = b.wonder ? groups[2] : b.national ? groups[1] : groups[0];
+      group.items.push(
+        this.actionButton(
+          'buy-building',
+          `${b.name} (${buildingSummary(b, true)})`,
+          buildingPrice(state, this.power, b.id, city),
+          { type: 'BuyBuilding', power: this.power, cityId: city.id, buildingId: b.id },
+          `data-building="${b.id}"`,
+          showReason,
+        ),
       );
     }
-    html += `</div>`;
+    if (noSlots) {
+      groups[0].items.push(`<div class="muted small">Все слоты заняты: новые здания — после роста города или в средневековье и индустрии (+1 слот). Улучшения встают в тот же слот.</div>`);
+    }
+    for (const g of groups) if (g.items.length) html += `<h3>${g.title}</h3><div class="actions">${g.items.join('')}</div>`;
+
+    // Сооружения на особых клетках города.
+    const spots = improvableTiles(state, city);
+    if (spots.length) {
+      html += `<h3 title="На особых клетках города; слот не занимают">Сооружения</h3><div class="actions">`;
+      for (const tile of spots) {
+        const def = improvementFor(state, tile)!;
+        const gives = Object.entries(def.yields).map(([k, v]) => `+${v} ${RES_GENITIVE[k]}`).join(', ');
+        const extra = def.wonderDiscount ? `, чудеса здесь ещё на ${def.wonderDiscount * 100}% дешевле` : '';
+        html += this.cmdButton(`${def.name} (${gives}${extra})`, `${improvementPrice(state, this.power, tile)} 🪙`, {
+          type: 'BuyImprovement',
+          power: this.power,
+          cityId: city.id,
+          tile,
+        }, showReason);
+      }
+      html += `</div>`;
+    }
     html += this.projectBlock(city);
     if (city.fortifyTurns <= 0) {
       const use = { ...NO_TARGET, ability: 'fortify' as const, cityId: city.id };

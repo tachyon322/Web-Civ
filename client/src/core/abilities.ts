@@ -9,7 +9,7 @@ import { epochName, epochOf, LAST_EPOCH } from './epochs';
 import { neighbors } from './hex';
 import { nationTrait } from './nations';
 import { remember } from './relations';
-import { allied, atWar, cityAt, citySlots, findCity, findUnit, mapSize, unitPeople } from './state';
+import { allied, atWar, cityAt, findCity, findUnit, fitCityToLevel, mapSize, unitPeople } from './state';
 import { turnsWord } from './text';
 import { NONE, type City, type GameState } from './types';
 import { computeVisible } from './visibility';
@@ -144,7 +144,7 @@ export function deterrentStrike(state: GameState, aggressor: number, owner: numb
   const def = abilities.deterrent;
   capital.level = Math.max(1, capital.level - def.levelLoss);
   capital.growth = 0;
-  while (capital.buildings.length > citySlots(capital)) capital.buildings.pop();
+  fitCityToLevel(state, capital);
   capital.durability = 0;
   const unit = state.units.find((u) => u.tile === capital.tile);
   if (unit) removeUnit(state, unit.id);

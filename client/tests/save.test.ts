@@ -67,7 +67,18 @@ describe('сохранения', () => {
     expect(migrate({ version: 1 }, 1, steps, 3)).toEqual({ version: 3, a: 1, b: 2 });
     expect(() => migrate({}, 4, steps, 3)).toThrow('более новой версией');
     expect(() => migrate({}, 1, {}, 2)).toThrow('не поддерживается');
-    expect(SAVE_VERSION).toBe(1);
+    expect(SAVE_VERSION).toBe(2);
+  });
+
+  it('сохранение версии 1 получает специалистов и сооружения', () => {
+    const s = played(1);
+    const old = JSON.parse(writeSaveFile(s));
+    old.version = 1;
+    delete old.state.improvements;
+    for (const c of old.state.cities) delete c.specialists;
+    const loaded = readSaveFile(JSON.stringify(old));
+    expect(loaded.improvements).toEqual([]);
+    expect(loaded.cities[0].specialists).toEqual({ scientist: 0, artisan: 0, merchant: 0 });
   });
 
   it('мусор вместо сохранения — понятная ошибка, а не падение', async () => {

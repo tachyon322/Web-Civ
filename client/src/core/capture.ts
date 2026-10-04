@@ -2,9 +2,10 @@
 // присоединить, разграбить или освободить его.
 
 import { balance, buildingDef, diplomacyConfig, unitDef } from './data';
+import { dropNationalBuildings } from './buildings';
 import { log, removeUnit } from './entities';
 import { distance } from './hex';
-import { atWar, citiesOf, cityMaxDurability, citySlots, findCity, mapSize, unitAt } from './state';
+import { atWar, citiesOf, cityMaxDurability, findCity, mapSize, fitCityToLevel, unitAt } from './state';
 import { forgetPower, remember } from './relations';
 import { revoltSource } from './culture';
 import { turnsWord } from './text';
@@ -63,6 +64,9 @@ export function plunderLoot(city: City): { gold: number; science: number; cultur
 export function transferCity(state: GameState, city: City, newOwner: number): void {
   const oldOwner = city.owner;
   city.owner = newOwner;
+  // Державные здания пропадают; у владельца в более ранней эпохе может быть меньше слотов.
+  dropNationalBuildings(city);
+  fitCityToLevel(state, city);
   burnProject(state, city);
   city.revoltFrom = NONE;
   city.revoltProgress = 0;
@@ -132,7 +136,7 @@ export function captureCity(state: GameState, unit: Unit, cityId: number, choice
     me.cultureTotal += loot.culture;
     city.level = Math.max(1, city.level - 1);
     city.growth = 0;
-    while (city.buildings.length > citySlots(city)) city.buildings.pop();
+    fitCityToLevel(state, city);
     // Город сразу восстанавливает оборону и какое-то время защищён от нового грабежа.
     city.durability = cityMaxDurability(city);
     city.plunderBlockedUntil = state.turn + balance.capture.plunderCooldownTurns;

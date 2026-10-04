@@ -1,12 +1,13 @@
 // Доходы и цены. Каждая цифра собирается из слагаемых, чтобы интерфейс мог показать разбивку.
 
 import { activeBuildings, buildingPrice } from './buildings';
-import { balance, buildingDef, buildings, diplomacyConfig, pathsConfig, specialYields } from './data';
+import { balance, buildingDef, buildings, diplomacyConfig, pathsConfig, specialistDefs, specialYields } from './data';
+import { improvementFor } from './improvements';
 import { nationTrait } from './nations';
 import { borderTiles } from './relations';
 import { stabilityLevel } from './stability';
-import { citiesOf, isLand, unitPeople, unitsOf, vassalsOf } from './state';
-import { SPECIALS, type City, type GameState } from './types';
+import { citiesOf, isLand, peopleAtLevel, unitPeople, unitsOf, vassalsOf } from './state';
+import { SPECIALIST_KINDS, SPECIALS, type City, type GameState } from './types';
 
 export type ResourceId = 'gold' | 'science' | 'culture';
 
@@ -36,16 +37,23 @@ function emptyIncome(): Income {
 
 const RESOURCES = ['gold', 'science', 'culture'] as const;
 
-/** Производство: города, земля, работающие здания, особые клетки, сложность (у ботов) и стабильность. */
+/** Производство: города, земля, работающие здания, специалисты, особые клетки и сооружения на них;
+ *  проценты — черта нации, державные здания, сложность (у ботов) и стабильность. */
 function production(state: GameState, power: number): Income {
   const income = emptyIncome();
   const cities = citiesOf(state, power);
   for (const city of cities) {
     add(income.gold, 'Города по уровню', balance.city.goldByLevel[city.level - 1]);
     add(income.science, 'Города', balance.city.sciencePerCity);
+    for (const kind of SPECIALIST_KINDS) {
+      const def = specialistDefs[kind];
+      for (const res of RESOURCES) add(income[res], `Специалисты: ${def.plural}`, city.specialists[kind] * (def.yields[res] ?? 0));
+    }
     for (const id of activeBuildings(city)) {
       const def = buildingDef(id);
       for (const res of RESOURCES) add(income[res], def.name, def.yields[res] ?? 0);
+      const per = def.perSpecialist;
+      if (per) for (const res of RESOURCES) add(income[res], def.name, city.specialists[per.kind] * (per.yields[res] ?? 0));
     }
   }
   const { owner } = state.territory;
@@ -60,10 +68,22 @@ function production(state: GameState, power: number): Income {
     const y = specialYields[special];
     for (const res of RESOURCES) add(income[res], specialNames[special], y[res] ?? 0);
   }
-  // Черта нации: доля к производству науки или культуры.
+  for (const t of state.improvements) {
+    if (owner[t] !== power) continue;
+    const def = improvementFor(state, t);
+    if (def) for (const res of RESOURCES) add(income[res], def.name, def.yields[res] ?? 0);
+  }
+  // Черта нации и державные здания: доли к производству (обе от одной базы, не друг от друга).
+  const base = { gold: income.gold.total, science: income.science.total, culture: income.culture.total };
   const trait = nationTrait(state, power);
-  if (trait.science) add(income.science, trait.name, Math.round(income.science.total * trait.science));
-  if (trait.culture) add(income.culture, trait.name, Math.round(income.culture.total * trait.culture));
+  if (trait.science) add(income.science, trait.name, Math.round(base.science * trait.science));
+  if (trait.culture) add(income.culture, trait.name, Math.round(base.culture * trait.culture));
+  for (const city of cities) {
+    for (const id of activeBuildings(city)) {
+      const bonus = buildingDef(id).bonus;
+      if (bonus) for (const res of RESOURCES) add(income[res], buildingDef(id).name, Math.round(Math.max(0, base[res]) * (bonus[res] ?? 0)));
+    }
+  }
   // Сложность меняет только доход ботов: процент от прихода до вычета содержания.
   const p = state.powers[power];
   const bonus = p.isHuman ? 0 : balance.difficulty[state.settings.difficulty].botIncomeBonus;
@@ -158,9 +178,9 @@ export function citizenPrice(_state: GameState, _power: number): number {
   return balance.prices.citizen;
 }
 
-/** Военный юнит из казарм стоит как несколько жителей. */
-export function militaryPrice(state: GameState, power: number): number {
-  return citizenPrice(state, power) * balance.units.barracksPriceInCitizens;
+/** Военный юнит из казарм или академии стоит как столько жителей, сколько в нём людей. */
+export function militaryPrice(state: GameState, power: number, level: number): number {
+  return citizenPrice(state, power) * peopleAtLevel(level) * balance.units.militaryPricePerPerson;
 }
 
 /** Цена основания растёт с каждым городом державы. */

@@ -2,11 +2,11 @@
 // В localStorage файл хранится сжатым (deflate + base64), при экспорте — обычным JSON.
 // Старые сохранения проходят цепочку миграций до текущей версии.
 
-import { nationDef, type GameState } from '../core';
+import { STATE_VERSION, nationDef, type GameState } from '../core';
 
 export const SAVE_FORMAT = 'web-civ-save';
-/** Текущая версия формата состояния; растёт при любом несовместимом изменении GameState. */
-export const SAVE_VERSION = 1;
+/** Текущая версия формата состояния. */
+export const SAVE_VERSION = STATE_VERSION;
 
 /** То, что видно в списке сохранений без распаковки состояния. */
 export interface SaveMeta {
@@ -55,10 +55,17 @@ export function toSaveFile(state: GameState, now = Date.now()): SaveFile {
 export type Migration = (state: Record<string, unknown>) => Record<string, unknown>;
 
 /**
- * Миграции формата. Пример на будущее: поле добавили в версии 2 —
- * `1: (s) => ({ ...s, version: 2, newField: default })`.
+ * Миграции формата: ключ — версия, с которой поднимаем.
+ * 1 → 2: специалисты в городах и сооружения на особых клетках.
  */
-export const MIGRATIONS: Readonly<Record<number, Migration>> = {};
+export const MIGRATIONS: Readonly<Record<number, Migration>> = {
+  1: (s) => ({
+    ...s,
+    version: 2,
+    improvements: [],
+    cities: ((s.cities as Record<string, unknown>[] | undefined) ?? []).map((c) => ({ ...c, specialists: { scientist: 0, artisan: 0, merchant: 0 } })),
+  }),
+};
 
 /** Поднимает состояние до текущей версии или объясняет, почему это невозможно. */
 export function migrate(

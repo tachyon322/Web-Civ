@@ -1,4 +1,7 @@
 import './ui/styles.css';
+import { installAudioUnlock, setVolumes } from './audio/engine';
+import { setMusicEnabled, setMusicMood, startMusic } from './audio/music';
+import { playCue } from './audio/sfx';
 import { newGame, type GameState } from './core';
 import { loadIdentity, apiLogin, sendEvent } from './net/analytics';
 import { MapRenderer } from './render/MapRenderer';
@@ -30,6 +33,18 @@ async function main(): Promise<void> {
   const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
   let settings = loadSettings();
+  // Звук: включается по первому действию игрока (так требуют браузеры).
+  const applySound = (s: Settings) => {
+    setVolumes(s.muted ? 0 : s.sfxVolume, s.muted ? 0 : s.musicVolume);
+    setMusicEnabled(!s.muted && s.musicVolume > 0);
+  };
+  installAudioUnlock();
+  applySound(settings);
+  startMusic();
+  document.addEventListener('click', (e) => {
+    const button = (e.target as HTMLElement).closest('button');
+    if (button && !button.disabled) playCue('click');
+  });
   const renderer = await MapRenderer.create(el('map'));
   renderer.setSimpleGraphics(settings.simpleGraphics);
   const minimap = new Minimap(el<HTMLCanvasElement>('minimap'), renderer);
@@ -91,6 +106,7 @@ async function main(): Promise<void> {
       settings = next;
       saveSettings(next);
       renderer.setSimpleGraphics(next.simpleGraphics);
+      applySound(next);
     },
     notify: (text) => controller.notify(text),
   };
@@ -98,6 +114,12 @@ async function main(): Promise<void> {
   controller.onNewGame = () => host.newGame();
   controller.onMenu = () => showMainMenu(host, true);
   controller.onTurnEnd = autosave;
+  controller.onSound = playCue;
+  controller.onWarState = (atWar) => setMusicMood(atWar ? 'war' : 'peace');
+  controller.onToggleSound = () => {
+    host.applySettings({ ...settings, muted: !settings.muted });
+    controller.notify(settings.muted ? 'Звук выключен (M — включить)' : 'Звук включён');
+  };
   controller.onGameOver = (state) => {
     const w = state.winner;
     const win = !!w && w.power === state.humanPower;

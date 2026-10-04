@@ -12,6 +12,7 @@ import { cityGrowthPerTurn, computeIncome } from './economy';
 import { LOG_LIMIT, log, removeUnit } from './entities';
 import { neighbors } from './hex';
 import { moveTowards } from './movement';
+import { tryClaim } from './territory';
 import { nationTrait } from './nations';
 import {
   atWar,
@@ -127,6 +128,12 @@ function upkeepUnits(state: GameState): void {
   }
 }
 
+/** Житель размечает и клетку, на которой стоит (закончил ход или освободился лимит). */
+function claimStandingTiles(state: GameState): void {
+  const citizens = state.units.filter((u) => u.type === 'citizen').sort((a, b) => a.id - b.id);
+  for (const unit of citizens) tryClaim(state, unit.owner, unit.tile);
+}
+
 function continueRoutes(state: GameState): void {
   const routed = state.units.filter((u) => u.routeTarget !== NONE).sort((a, b) => a.id - b.id);
   for (const unit of routed) {
@@ -151,6 +158,7 @@ export function advanceTurn(state: GameState): void {
   refreshAllStability(state);
   upkeepUnits(state);
   continueRoutes(state);
+  claimStandingTiles(state);
   for (const power of state.powers) {
     if (!power.alive) continue;
     updateExplored(state, power.id);

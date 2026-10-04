@@ -1,9 +1,10 @@
 // Запросы к состоянию: чистые функции чтения, без изменений.
 
-import { balance, buildingDef, terrainDefs, unitDef } from './data';
+import { balance, buildingDef, pathsConfig, terrainDefs, unitDef } from './data';
+import { epochOf } from './epochs';
 import { neighbors, type MapSize } from './hex';
 import { nationTrait, unitTypeMp } from './nations';
-import { NONE, TERRAINS, type City, type GameState, type Pact, type PactKind, type Power, type Unit } from './types';
+import { NONE, SPECIALIST_KINDS, TERRAINS, type City, type GameState, type Pact, type PactKind, type Power, type Unit } from './types';
 
 export function mapSize(state: GameState): MapSize {
   return state.map;
@@ -59,18 +60,61 @@ export function cityTiles(state: GameState, cityId: number): number[] {
   return result;
 }
 
-export function cityTileCountAll(state: GameState): Map<number, number> {
-  const counts = new Map<number, number>();
-  for (const c of state.territory.city) if (c !== NONE) counts.set(c, (counts.get(c) ?? 0) + 1);
-  return counts;
-}
-
+/** Вклад города в лимит земли державы (по уровню и черте нации). */
 export function cityTileLimit(state: GameState, city: City): number {
   return balance.city.tileLimit[city.level - 1] + (nationTrait(state, city.owner).tileLimit ?? 0);
 }
 
-export function citySlots(city: City): number {
-  return balance.city.slots[city.level - 1];
+/** Лимит земли державы: сумма вкладов всех её городов. */
+export function landLimit(state: GameState, power: number): number {
+  let sum = 0;
+  for (const c of state.cities) if (c.owner === power) sum += cityTileLimit(state, c);
+  return sum;
+}
+
+/** Сколько клеток у державы (территория — только суша). */
+export function landTiles(state: GameState, power: number): number {
+  let n = 0;
+  for (const o of state.territory.owner) if (o === power) n++;
+  return n;
+}
+
+/** Слоты зданий: по уровню города и +1 за некоторые эпохи владельца (средневековье, индустрия). */
+export function citySlots(state: GameState, city: City): number {
+  const epoch = epochOf(state.powers[city.owner]);
+  return balance.city.slots[city.level - 1] + pathsConfig.epoch.slotEpochs.filter((e) => e <= epoch).length;
+}
+
+/** Здание занимает слот (чудеса и державные здания — нет). */
+export function takesSlot(id: string): boolean {
+  const def = buildingDef(id);
+  return !def.wonder && !def.national;
+}
+
+export function usedSlots(city: City): number {
+  return city.buildings.filter(takesSlot).length;
+}
+
+/** Сколько специалистов в городе всего. */
+export function specialistCount(city: City): number {
+  return SPECIALIST_KINDS.reduce((sum, k) => sum + city.specialists[k], 0);
+}
+
+/** После потери уровня лишние здания (кроме чудес и державных) сносятся с последнего построенного,
+ *  лишние специалисты уходят — сначала тех видов, которых больше. */
+export function fitCityToLevel(state: GameState, city: City): void {
+  for (let i = city.buildings.length - 1; i >= 0 && usedSlots(city) > citySlots(state, city); i--) {
+    if (takesSlot(city.buildings[i])) city.buildings.splice(i, 1);
+  }
+  while (specialistCount(city) > city.level) {
+    const most = [...SPECIALIST_KINDS].sort((a, b) => city.specialists[b] - city.specialists[a])[0];
+    city.specialists[most]--;
+  }
+}
+
+/** Город у моря: рядом с ним есть вода. */
+export function isCoastal(state: GameState, city: City): boolean {
+  return neighbors(mapSize(state), city.tile).some((t) => !isLand(state, t));
 }
 
 /** Порог роста до следующего уровня или null на максимальном уровне. */
@@ -80,7 +124,12 @@ export function cityGrowthThreshold(city: City): number | null {
 }
 
 export function unitPeople(unit: Unit): number {
-  return 2 ** (unit.level - 1);
+  return peopleAtLevel(unit.level);
+}
+
+/** Сколько людей в юните этого уровня: 1, 2, 4, 8. */
+export function peopleAtLevel(level: number): number {
+  return 2 ** (level - 1);
 }
 
 /** Максимальная сила юнита равна числу людей в нём. */
@@ -98,6 +147,11 @@ export function isMilitary(unit: Unit): boolean {
 
 export function hasBuildingEffect(city: City, effect: 'barracks' | 'walls'): boolean {
   return city.buildings.some((b) => buildingDef(b).effect === effect);
+}
+
+/** Уровень военного юнита, которого можно купить в городе (0 — нет казарм). */
+export function cityUnitLevel(city: City): number {
+  return city.buildings.reduce((max, b) => Math.max(max, buildingDef(b).unitLevel ?? 0), 0);
 }
 
 export function cityMaxDurability(city: City): number {

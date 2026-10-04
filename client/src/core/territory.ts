@@ -1,22 +1,22 @@
-// Разметка земли: территория растёт только жителями, клетка привязывается к ближайшему
-// своему городу со свободным лимитом.
+// Разметка земли: территория растёт только жителями в пределах общего лимита земли державы,
+// клетка привязывается к ближайшему своему городу.
 
 import { balance } from './data';
 import { distance, neighbors, range } from './hex';
-import { cityTileCountAll, cityTileLimit, isLand, mapSize } from './state';
+import { isLand, landLimit, landTiles, mapSize } from './state';
 import { NONE, type City, type GameState } from './types';
 
 export type ClaimCheck = { ok: true; city: City } | { ok: false; reason: string };
 
-/** Ближайший свой город со свободным лимитом клеток (при равенстве — с меньшим id). */
-export function nearestCityWithFreeLimit(state: GameState, power: number, tile: number): City | null {
+export const LAND_LIMIT_REASON = 'Исчерпан лимит земли державы';
+
+/** Ближайший свой город (при равенстве — с меньшим id). */
+export function nearestOwnCity(state: GameState, power: number, tile: number): City | null {
   const size = mapSize(state);
-  const counts = cityTileCountAll(state);
   let best: City | null = null;
   let bestDist = Infinity;
   for (const city of state.cities) {
     if (city.owner !== power) continue;
-    if ((counts.get(city.id) ?? 0) >= cityTileLimit(state, city)) continue;
     const d = distance(size, city.tile, tile);
     if (d < bestDist || (d === bestDist && best !== null && city.id < best.id)) {
       best = city;
@@ -30,6 +30,11 @@ export function bordersTerritory(state: GameState, power: number, tile: number):
   return neighbors(mapSize(state), tile).some((n) => state.territory.owner[n] === power);
 }
 
+/** Осталось клеток до лимита земли державы. */
+export function landLeft(state: GameState, power: number): number {
+  return landLimit(state, power) - landTiles(state, power);
+}
+
 /** Может ли житель державы разметить клетку, на которую он вошёл. */
 export function checkClaim(state: GameState, power: number, tile: number): ClaimCheck {
   if (!isLand(state, tile)) return { ok: false, reason: 'Размечать можно только сушу' };
@@ -37,8 +42,9 @@ export function checkClaim(state: GameState, power: number, tile: number): Claim
   if (!bordersTerritory(state, power, tile)) {
     return { ok: false, reason: 'Клетка не граничит с вашей территорией' };
   }
-  const city = nearestCityWithFreeLimit(state, power, tile);
-  if (!city) return { ok: false, reason: 'У всех городов исчерпан лимит клеток' };
+  if (landLeft(state, power) <= 0) return { ok: false, reason: LAND_LIMIT_REASON };
+  const city = nearestOwnCity(state, power, tile);
+  if (!city) return { ok: false, reason: 'Нет своих городов' };
   return { ok: true, city };
 }
 

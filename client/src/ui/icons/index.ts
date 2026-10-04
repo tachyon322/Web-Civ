@@ -19,6 +19,7 @@ export const ICONS = {
   science: { glyph: 'erlenmeyer', top: '#a6e1ff', bottom: '#3a8fe0' },
   culture: { glyph: 'drama-masks', top: '#ecccff', bottom: '#a15fe0' },
   epoch: { glyph: 'hourglass', top: '#f8dfa8', bottom: '#c0863a' },
+  land: { glyph: 'treasure-map', top: '#e6f2b8', bottom: '#7fae4a' },
   stability: { glyph: 'scales', top: '#f4f6f9', bottom: '#a3aebd' },
   deterrence: { glyph: 'checked-shield', top: '#dbe7f4', bottom: '#6f88a8' },
   war: { glyph: 'crossed-swords', top: '#ffb3a8', bottom: '#d8382c' },
