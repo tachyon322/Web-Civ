@@ -1,9 +1,10 @@
 // Запросы к состоянию: чистые функции чтения, без изменений.
 
-import { balance, buildingDef, terrainDefs, unitDef } from './data';
+import { balance, buildingDef, pathsConfig, terrainDefs, unitDef } from './data';
+import { epochOf } from './epochs';
 import { neighbors, type MapSize } from './hex';
 import { nationTrait, unitTypeMp } from './nations';
-import { NONE, TERRAINS, type City, type GameState, type Pact, type PactKind, type Power, type Unit } from './types';
+import { NONE, SPECIALIST_KINDS, TERRAINS, type City, type GameState, type Pact, type PactKind, type Power, type Unit } from './types';
 
 export function mapSize(state: GameState): MapSize {
   return state.map;
@@ -78,20 +79,42 @@ export function landTiles(state: GameState, power: number): number {
   return n;
 }
 
-export function citySlots(city: City): number {
-  return balance.city.slots[city.level - 1];
+/** Слоты зданий: по уровню города и +1 за некоторые эпохи владельца (средневековье, индустрия). */
+export function citySlots(state: GameState, city: City): number {
+  const epoch = epochOf(state.powers[city.owner]);
+  return balance.city.slots[city.level - 1] + pathsConfig.epoch.slotEpochs.filter((e) => e <= epoch).length;
 }
 
-/** Занятые слоты: чудеса света слот не занимают. */
+/** Здание занимает слот (чудеса и державные здания — нет). */
+export function takesSlot(id: string): boolean {
+  const def = buildingDef(id);
+  return !def.wonder && !def.national;
+}
+
 export function usedSlots(city: City): number {
-  return city.buildings.filter((b) => !buildingDef(b).wonder).length;
+  return city.buildings.filter(takesSlot).length;
 }
 
-/** После потери уровня лишние здания (не чудеса) сносятся — с последнего построенного. */
-export function trimBuildings(city: City): void {
-  for (let i = city.buildings.length - 1; i >= 0 && usedSlots(city) > citySlots(city); i--) {
-    if (!buildingDef(city.buildings[i]).wonder) city.buildings.splice(i, 1);
+/** Сколько специалистов в городе всего. */
+export function specialistCount(city: City): number {
+  return SPECIALIST_KINDS.reduce((sum, k) => sum + city.specialists[k], 0);
+}
+
+/** После потери уровня лишние здания (кроме чудес и державных) сносятся с последнего построенного,
+ *  лишние специалисты уходят — сначала тех видов, которых больше. */
+export function fitCityToLevel(state: GameState, city: City): void {
+  for (let i = city.buildings.length - 1; i >= 0 && usedSlots(city) > citySlots(state, city); i--) {
+    if (takesSlot(city.buildings[i])) city.buildings.splice(i, 1);
   }
+  while (specialistCount(city) > city.level) {
+    const most = [...SPECIALIST_KINDS].sort((a, b) => city.specialists[b] - city.specialists[a])[0];
+    city.specialists[most]--;
+  }
+}
+
+/** Город у моря: рядом с ним есть вода. */
+export function isCoastal(state: GameState, city: City): boolean {
+  return neighbors(mapSize(state), city.tile).some((t) => !isLand(state, t));
 }
 
 /** Порог роста до следующего уровня или null на максимальном уровне. */

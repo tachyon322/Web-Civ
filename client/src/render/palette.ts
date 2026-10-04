@@ -28,6 +28,7 @@ export const palette = {
   capture: 0xff9f1c,
   merge: 0xc58bff,
   claim: 0xb6f07a,
+  improvement: 0xf2c94c,
 };
 
 export function hexColor(css: string): number {

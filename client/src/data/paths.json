@@ -9,7 +9,8 @@
   "epoch": {
     "strengthPerEpoch": 0.1,
     "mpPerEpoch": 1,
-    "freeCitiesPerEpoch": 1
+    "freeCitiesPerEpoch": 1,
+    "slotEpochs": [2, 4]
   },
   "techGap": {
     "minRatio": 1.5,

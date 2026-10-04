@@ -102,7 +102,11 @@
     "minIncomeAfterPurchase": 1,
     "citizensPerCity": 1,
     "extraCitizens": 1,
-    "stockpile": 150
+    "stockpile": 150,
+    "specialistsForSchool": 2,
+    "specialistSynergy": 1,
+    "nationalWeight": 2,
+    "improvementWeight": 1.5
   },
   "settle": {
     "searchRadius": 9,

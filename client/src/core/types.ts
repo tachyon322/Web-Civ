@@ -177,6 +177,9 @@ export interface Proposal {
   status: 'pending' | 'accepted' | 'declined' | 'expired';
 }
 
+export type SpecialistKind = 'scientist' | 'artisan' | 'merchant';
+export const SPECIALIST_KINDS: readonly SpecialistKind[] = ['scientist', 'artisan', 'merchant'];
+
 export interface City {
   id: number;
   owner: number;
@@ -210,6 +213,8 @@ export interface City {
   disabledTurns: number;
   /** Финальный проект в этом городе. */
   project: { kind: ProjectKind; stages: number } | null;
+  /** Специалисты: учёные, мастера, купцы (всего не больше уровня города). */
+  specialists: Record<SpecialistKind, number>;
 }
 
 export type ProjectKind = 'science' | 'culture';
@@ -262,8 +267,11 @@ export interface GameSettings {
   difficulty: Difficulty;
 }
 
+/** Версия формата состояния; растёт при любом несовместимом изменении GameState (миграции — в save/format). */
+export const STATE_VERSION = 2;
+
 export interface GameState {
-  version: 1;
+  version: number;
   settings: GameSettings;
   turn: number;
   humanPower: number;
@@ -280,6 +288,8 @@ export interface GameState {
   coalitionLeader: number;
   /** Итог партии или null, пока она идёт. */
   winner: Victory | null;
+  /** Клетки с сооружениями (рудник, каменоломня, раскопки на особых клетках). */
+  improvements: number[];
   nextId: number;
   log: LogEntry[];
 }

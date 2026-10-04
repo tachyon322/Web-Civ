@@ -13,7 +13,6 @@ import {
   epochOf,
   findCity,
   nationTrait,
-  buildingCurrency,
   buildingPrice,
   nextEpochScience,
   pathsConfig,
@@ -230,10 +229,10 @@ export class PathsWindow {
       .map((b) => {
         const city = wonderCity(state, b.id);
         const where = city ? (explored[city.tile] ? `${city.name} (${state.powers[city.owner].name})` : 'построено где-то в мире') : 'свободно';
-        const price = `${buildingPrice(state, power, b.id)} ${icon(buildingCurrency(b))}`;
+        const price = `${buildingPrice(state, power, b.id)} ${icon('gold')}`;
         return `<div class="row"><span>${esc(b.name)} <span class="muted small">с эпохи «${esc(epochName(b.epoch ?? 0))}», ${price}</span></span><span>${esc(where)}</span></div>`;
       })
       .join('');
-    return `<h3>Чудеса света</h3><div class="muted small">Одно на весь мир, слот не занимает, покупается за культуру; в городе с мрамором на ${pathsConfig.culture.wonderMarbleDiscount * 100}% дешевле.</div>${rows}`;
+    return `<h3>Чудеса света</h3><div class="muted small">Одно на весь мир, слот не занимает; в городе с мрамором на ${pathsConfig.culture.wonderMarbleDiscount * 100}% дешевле.</div>${rows}`;
   }
 }

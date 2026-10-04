@@ -9,7 +9,7 @@ import nationsJson from '../data/nations.json';
 import pathsJson from '../data/paths.json';
 import terrainJson from '../data/terrain.json';
 import traitsJson from '../data/traits.json';
-import type { Character, MemoryKind, SpecialId, TerrainId, UnitType } from './types';
+import type { Character, MemoryKind, SpecialId, SpecialistKind, TerrainId, UnitType } from './types';
 
 export type Yields = Partial<Record<'gold' | 'science' | 'culture', number>>;
 export type Currency = 'gold' | 'science' | 'culture';
@@ -24,8 +24,16 @@ export interface BuildingDef {
   effect?: 'barracks' | 'walls';
   /** Уровень военного юнита, которого можно купить в городе (казармы, академия). */
   unitLevel?: number;
-  /** Чем платить (по умолчанию золото): улучшения научной линии — наукой, культурной и чудеса — культурой. */
-  currency?: Currency;
+  /** Только в городе у моря. */
+  coastal?: boolean;
+  /** Доход за каждого специалиста этого вида в городе (школа — за учёных). */
+  perSpecialist?: { kind: SpecialistKind; yields: Yields };
+  /** Державное здание: одно на державу, слот не занимает, даёт процент к доходу. */
+  national?: boolean;
+  /** Доля к производству державы (державные здания). */
+  bonus?: Yields;
+  /** Условие: столько городов с этим зданием или его улучшением. */
+  requires?: { building: string; count: number };
   /** Прибавка к прочности города (стены). */
   durability?: number;
   /** Прибавка к силе города в защите и при выстреле (стены). */
@@ -34,7 +42,7 @@ export interface BuildingDef {
   stability?: number;
   /** Улучшение какого здания (занимает тот же слот). */
   upgradeOf?: string;
-  /** С какой эпохи доступно (индекс; сейчас только у чудес). */
+  /** С какой эпохи доступно (индекс; только у чудес). */
   epoch?: number;
   /** Чудо света: одно на весь мир, слот не занимает. */
   wonder?: boolean;
@@ -113,6 +121,26 @@ export const specialYields: Readonly<Record<SpecialId, Yields>> = balance.specia
 export function unitDef(type: UnitType): UnitDef {
   return balance.units[type];
 }
+
+export interface SpecialistDef {
+  name: string;
+  /** Родительный падеж множественного числа: «учёных». */
+  plural: string;
+  yields: Yields;
+  currencies: Currency[];
+}
+
+export interface ImprovementDef {
+  name: string;
+  yields: Yields;
+  basePrice: number;
+  priceStep: number;
+  /** Скидка на чудеса в городе с этим сооружением (каменоломня). */
+  wonderDiscount?: number;
+}
+
+export const specialistDefs = balance.specialists.kinds as Readonly<Record<SpecialistKind, SpecialistDef>>;
+export const improvementDefs = balance.improvements as Readonly<Partial<Record<SpecialId, ImprovementDef>>>;
 
 export function buildingDef(id: string): BuildingDef {
   const def = buildings.find((b) => b.id === id);

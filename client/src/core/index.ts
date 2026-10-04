@@ -17,6 +17,8 @@ export * from './text';
 export * from './epochs';
 export * from './stability';
 export * from './buildings';
+export * from './specialists';
+export * from './improvements';
 export * from './culture';
 export * from './abilities';
 export * from './victory';

@@ -3,12 +3,12 @@
 
 import { blankPower, createCity, createUnit } from '../src/core/entities';
 import { startWar } from '../src/core/relations';
-import { NONE, T_PLAINS, type GameState, type Unit, type UnitType } from '../src/core/types';
+import { NONE, STATE_VERSION, T_PLAINS, type GameState, type Unit, type UnitType } from '../src/core/types';
 
 export function blankState(width = 12, height = 10, powers = 2): GameState {
   const n = width * height;
   return {
-    version: 1,
+    version: STATE_VERSION,
     settings: { seed: 1, powers, humanNation: null, difficulty: 'normal' },
     turn: 1,
     humanPower: 0,
@@ -25,6 +25,7 @@ export function blankState(width = 12, height = 10, powers = 2): GameState {
     proposals: [],
     coalitionLeader: NONE,
     winner: null,
+    improvements: [],
     nextId: 1,
     log: [],
   };

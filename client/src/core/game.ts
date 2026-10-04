@@ -7,7 +7,7 @@ import { neighbors } from './hex';
 import { canStop } from './pathfinding';
 import { createRng, deriveSeed } from './rng';
 import { isLand } from './state';
-import { CHARACTERS, NONE, type Character, type Difficulty, type GameSettings, type GameState } from './types';
+import { CHARACTERS, NONE, STATE_VERSION, type Character, type Difficulty, type GameSettings, type GameState } from './types';
 import { refreshAllStability } from './stability';
 import { updateExplored } from './visibility';
 
@@ -33,7 +33,7 @@ export function newGame(settings: NewGameSettings): GameState {
   });
 
   const state: GameState = {
-    version: 1,
+    version: STATE_VERSION,
     settings: { ...settings, powers: powersCount, difficulty: settings.difficulty ?? 'normal' },
     turn: 1,
     humanPower: 0,
@@ -46,6 +46,7 @@ export function newGame(settings: NewGameSettings): GameState {
     proposals: [],
     coalitionLeader: NONE,
     winner: null,
+    improvements: [],
     nextId: 1,
     log: [],
   };

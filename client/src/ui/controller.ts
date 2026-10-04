@@ -20,8 +20,14 @@ import {
   citySlots,
   cityUnitLevel,
   usedSlots,
+  specialistCount,
+  specialistPrice,
+  improvableTiles,
+  improvementFor,
+  improvementPrice,
+  SPECIALIST_KINDS,
+  type SpecialistKind,
   militaryPrice,
-  buildingCurrency,
   cityStrength,
   cityStrengthParts,
   cityTileLimit,
@@ -90,7 +96,7 @@ import {
   type Unit,
 } from '../core';
 import { BotRunner } from '../ai/client';
-import { buildingDef, specialYields, unitDef } from '../core/data';
+import { buildingDef, specialistDefs, specialYields, unitDef } from '../core/data';
 import { computeVisible } from '../core/visibility';
 import { emptyOverlay, type MapRenderer, type Overlay } from '../render/MapRenderer';
 import type { Minimap } from '../render/minimap';
@@ -121,6 +127,10 @@ export interface UiElements {
 
 const SPECIAL_NAMES: Record<string, string> = { gold: 'Золотая жила', marble: 'Мрамор', ruins: 'Древние руины' };
 const RES_NAMES: Record<string, string> = { gold: 'золото', science: 'наука', culture: 'культура' };
+const RES_GENITIVE: Record<string, string> = { gold: 'золота', science: 'науки', culture: 'культуры' };
+const RES_TOKENS: Record<string, string> = { gold: '🪙', science: '🔬', culture: '🎭' };
+/** «за каждого учёного». */
+const SPECIALIST_ONE: Record<SpecialistKind, string> = { scientist: 'учёного', artisan: 'мастера', merchant: 'купца' };
 const TYPE_HINTS: Record<MilitaryType, string> = {
   warrior: 'основная пехота, захватывает города; сильнее против всадников',
   archer: 'бьёт с 2 клеток без ответного урона, бонус против городов; сильнее против воинов',
@@ -159,6 +169,11 @@ function buildingSummary(b: BuildingDef, purchase = false): string {
   const parts = Object.entries(b.yields).map(([k, v]) => `+${v} ${RES_NAMES[k]}`);
   if (b.stability) parts.push(`+${b.stability} к стабильности`);
   if (b.strength) parts.push(`+${b.strength} к силе города`);
+  if (b.perSpecialist) {
+    const per = b.perSpecialist;
+    for (const [k, v] of Object.entries(per.yields)) parts.push(`+${v} ${RES_NAMES[k]} за каждого ${SPECIALIST_ONE[per.kind]} в городе`);
+  }
+  if (b.bonus) for (const [k, v] of Object.entries(b.bonus)) parts.push(`+${Math.round((v ?? 0) * 100)}% ${RES_GENITIVE[k]} всей державе`);
   if (purchase && b.upgradeOf) parts.push(`вместо «${buildingDef(b.upgradeOf).name}»`);
   if (b.wonder) parts.unshift('чудо света');
   return parts.join(', ');
@@ -329,8 +344,11 @@ export class GameController {
         return this.sound('found');
       case 'BuyCitizen':
       case 'BuyMilitary':
+      case 'BuySpecialist':
       case 'Gift':
         return this.sound('coins');
+      case 'BuyImprovement':
+        return this.sound('build');
       case 'BuyBuilding':
         return this.sound(buildingDef(cmd.buildingId).wonder ? 'wonder' : 'build');
       case 'BuyProjectStage':
@@ -1015,7 +1033,12 @@ export class GameController {
     }
     const tiles = cityTiles(state, city.id).length;
     html += `<div class="row"><span title="Клетки, привязанные к городу: +1 к росту каждая">Клетки</span><span title="Вклад города в лимит земли державы">${tiles} · лимиту +${cityTileLimit(state, city)}</span></div>
-      <div class="row"><span>Слоты зданий</span><span>${usedSlots(city)} / ${citySlots(city)}</span></div>`;
+      <div class="row"><span>Слоты зданий</span><span>${usedSlots(city)} / ${citySlots(state, city)}</span></div>
+      <div class="row" title="Специалисты: в городе не больше, чем его уровень"><span>Специалисты</span><span>${
+        SPECIALIST_KINDS.filter((k) => city.specialists[k])
+          .map((k) => `${specialistDefs[k].plural} ${city.specialists[k]}`)
+          .join(' · ') || 'нет'
+      } (${specialistCount(city)} / ${city.level})</span></div>`;
     const inc = this.cityIncome(city);
     html += `<div class="row"><span>Даёт за ход</span><span>${icon('gold')} ${inc.gold} · ${icon('science')} ${inc.science} · ${icon('culture')} ${inc.culture}</span></div>`;
     const capital = findCity(state, owner.capitalId);
@@ -1054,24 +1077,79 @@ export class GameController {
         );
       }
     }
+    html += `</div>`;
+
+    // Специалисты: учёного и мастера можно купить и за свою валюту.
+    if (specialistCount(city) < city.level) {
+      html += `<h3 title="Слот не занимают, содержания нет; в городе не больше, чем его уровень">Специалисты</h3><div class="actions">`;
+      for (const kind of SPECIALIST_KINDS) {
+        const def = specialistDefs[kind];
+        const price = specialistPrice(state, this.power, kind);
+        const gives = Object.entries(def.yields).map(([k, v]) => `+${v} ${RES_GENITIVE[k]}`).join(', ');
+        for (const currency of def.currencies) {
+          html += this.cmdButton(`${def.name} (${gives} за ход)`, `${price} ${RES_TOKENS[currency]}`, {
+            type: 'BuySpecialist',
+            power: this.power,
+            cityId: city.id,
+            kind,
+            currency,
+          }, false);
+        }
+      }
+      html += `</div>`;
+    }
+
+    // Здания по группам. Не показываем то, что здесь уже не купить: построенное, чужие чудеса,
+    // дальние шаги цепочек, здания у моря в городе не у моря и чудеса позже следующей эпохи.
     const epoch = epochOf(state.powers[this.power]);
+    const groups: { title: string; items: string[] }[] = [
+      { title: 'Здания', items: [] },
+      { title: 'Державные здания', items: [] },
+      { title: 'Чудеса света', items: [] },
+    ];
+    let noSlots = false;
     for (const b of buildings) {
-      // Не показываем то, что здесь уже не купить: построенное, чужие чудеса, дальние шаги цепочек,
-      // и чудеса, которые откроются позже следующей эпохи.
       const blocker = buildingBlocker(state, this.power, city, b);
-      if (blocker && /^(Здание уже|Уже есть улучш|Сначала нужно|Чудо уже)/.test(blocker)) continue;
+      if (blocker && /^(Здание уже|Уже есть|Сначала нужно|Чудо уже|Только в городе у моря)/.test(blocker)) continue;
       if ((b.epoch ?? 0) > epoch + 1) continue;
-      html += this.actionButton(
-        'buy-building',
-        `${b.name} (${buildingSummary(b, true)})`,
-        buildingPrice(state, this.power, b.id, city),
-        { type: 'BuyBuilding', power: this.power, cityId: city.id, buildingId: b.id },
-        `data-building="${b.id}"`,
-        showReason,
-        buildingCurrency(b),
+      if (blocker === 'Нет свободных слотов') {
+        noSlots = true;
+        continue;
+      }
+      const group = b.wonder ? groups[2] : b.national ? groups[1] : groups[0];
+      group.items.push(
+        this.actionButton(
+          'buy-building',
+          `${b.name} (${buildingSummary(b, true)})`,
+          buildingPrice(state, this.power, b.id, city),
+          { type: 'BuyBuilding', power: this.power, cityId: city.id, buildingId: b.id },
+          `data-building="${b.id}"`,
+          showReason,
+        ),
       );
     }
-    html += `</div>`;
+    if (noSlots) {
+      groups[0].items.push(`<div class="muted small">Все слоты заняты: новые здания — после роста города или в средневековье и индустрии (+1 слот). Улучшения встают в тот же слот.</div>`);
+    }
+    for (const g of groups) if (g.items.length) html += `<h3>${g.title}</h3><div class="actions">${g.items.join('')}</div>`;
+
+    // Сооружения на особых клетках города.
+    const spots = improvableTiles(state, city);
+    if (spots.length) {
+      html += `<h3 title="На особых клетках города; слот не занимают">Сооружения</h3><div class="actions">`;
+      for (const tile of spots) {
+        const def = improvementFor(state, tile)!;
+        const gives = Object.entries(def.yields).map(([k, v]) => `+${v} ${RES_GENITIVE[k]}`).join(', ');
+        const extra = def.wonderDiscount ? `, чудеса здесь ещё на ${def.wonderDiscount * 100}% дешевле` : '';
+        html += this.cmdButton(`${def.name} (${gives}${extra})`, `${improvementPrice(state, this.power, tile)} 🪙`, {
+          type: 'BuyImprovement',
+          power: this.power,
+          cityId: city.id,
+          tile,
+        }, showReason);
+      }
+      html += `</div>`;
+    }
     html += this.projectBlock(city);
     if (city.fortifyTurns <= 0) {
       const use = { ...NO_TARGET, ability: 'fortify' as const, cityId: city.id };

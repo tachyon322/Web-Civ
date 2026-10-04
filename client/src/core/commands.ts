@@ -3,7 +3,7 @@
 
 import { captureBlocker, captureCity, choiceBlocker, type CaptureChoice } from './capture';
 import { attackBlocker, resolveAttack } from './combat';
-import { balance, buildingDef, buildings, unitDef } from './data';
+import { balance, buildingDef, buildings, specialistDefs, unitDef, type Currency } from './data';
 import {
   cancelPact,
   dealBlocker,
@@ -31,11 +31,13 @@ import {
 } from './state';
 import { advanceTurn } from './turn';
 import { abilityBlocker, useAbility, type AbilityUse } from './abilities';
-import { addBuilding, buildingBlocker, buildingCurrency, currencyGenitive } from './buildings';
+import { addBuilding, buildingBlocker } from './buildings';
+import { improvementBlocker, improvementFor, improvementPrice } from './improvements';
+import { specialistBlocker, specialistPrice } from './specialists';
 import { epochMpBonus } from './epochs';
 import { nationTrait, unitTypeMp } from './nations';
 import { refreshAllStability, refreshStability } from './stability';
-import { MILITARY_TYPES, NONE, type Deal, type GameState, type MilitaryType, type ProjectKind, type Unit } from './types';
+import { MILITARY_TYPES, NONE, SPECIALIST_KINDS, type SpecialistKind, type Deal, type GameState, type MilitaryType, type ProjectKind, type Unit } from './types';
 import { buyProjectStage, checkVictory, projectBlocker } from './victory';
 
 export type Command =
@@ -45,6 +47,8 @@ export type Command =
   | { type: 'BuyCitizen'; power: number; cityId: number }
   | { type: 'BuyBuilding'; power: number; cityId: number; buildingId: string }
   | { type: 'BuyMilitary'; power: number; cityId: number; unitType: MilitaryType }
+  | { type: 'BuySpecialist'; power: number; cityId: number; kind: SpecialistKind; currency: Currency }
+  | { type: 'BuyImprovement'; power: number; cityId: number; tile: number }
   | { type: 'Merge'; power: number; unitId: number; targetId: number; into: MilitaryType }
   | { type: 'Attack'; power: number; unitId: number; target: number }
   | { type: 'CaptureCity'; power: number; unitId: number; cityId: number; choice: CaptureChoice }
@@ -131,9 +135,25 @@ export function validate(state: GameState, cmd: Command): Validation {
       const blocker = buildingBlocker(state, cmd.power, city, buildingDef(cmd.buildingId));
       if (blocker) return fail(blocker);
       const price = buildingPrice(state, cmd.power, cmd.buildingId, city);
-      const currency = buildingCurrency(buildingDef(cmd.buildingId));
-      if (power[currency] < price) return fail(`Нужно ${price} ${currencyGenitive(currency)}`);
+      if (power.gold < price) return fail(`Нужно ${price} золота`);
       return OK;
+    }
+
+    case 'BuySpecialist': {
+      const city = findCity(state, cmd.cityId);
+      if (!city || city.owner !== cmd.power) return fail('Это не ваш город');
+      if (!SPECIALIST_KINDS.includes(cmd.kind)) return fail('Неизвестный специалист');
+      if (city.purchasedThisTurn) return fail('В этом городе уже была покупка в этом ходу');
+      const blocker = specialistBlocker(state, cmd.power, city, cmd.kind, cmd.currency);
+      return blocker ? fail(blocker) : OK;
+    }
+
+    case 'BuyImprovement': {
+      const city = findCity(state, cmd.cityId);
+      if (!city || city.owner !== cmd.power) return fail('Это не ваш город');
+      if (city.purchasedThisTurn) return fail('В этом городе уже была покупка в этом ходу');
+      const blocker = improvementBlocker(state, cmd.power, city, cmd.tile);
+      return blocker ? fail(blocker) : OK;
     }
 
     case 'BuyMilitary': {
@@ -267,12 +287,31 @@ export function apply(state: GameState, cmd: Command): void {
     case 'BuyBuilding': {
       const city = findCity(state, cmd.cityId)!;
       const def = buildingDef(cmd.buildingId);
-      // Эпохи считаются по всей заработанной науке, поэтому трата науки эпоху не отнимает.
-      power[buildingCurrency(def)] -= buildingPrice(state, cmd.power, cmd.buildingId, city);
+      power.gold -= buildingPrice(state, cmd.power, cmd.buildingId, city);
       city.purchasedThisTurn = true;
       addBuilding(city, def);
       if (def.wonder) log(state, NONE, `${power.name} строит чудо света «${def.name}» в городе ${city.name}`);
       else log(state, cmd.power, `${city.name}: построено здание «${def.name}»`);
+      break;
+    }
+
+    case 'BuySpecialist': {
+      const city = findCity(state, cmd.cityId)!;
+      // Эпохи считаются по всей заработанной науке, поэтому трата науки эпоху не отнимает.
+      power[cmd.currency] -= specialistPrice(state, cmd.power, cmd.kind);
+      city.purchasedThisTurn = true;
+      city.specialists[cmd.kind]++;
+      log(state, cmd.power, `${city.name}: ${specialistDefs[cmd.kind].name.toLowerCase()} принят на службу`);
+      break;
+    }
+
+    case 'BuyImprovement': {
+      const city = findCity(state, cmd.cityId)!;
+      const def = improvementFor(state, cmd.tile)!;
+      power.gold -= improvementPrice(state, cmd.power, cmd.tile);
+      city.purchasedThisTurn = true;
+      state.improvements.push(cmd.tile);
+      log(state, cmd.power, `${city.name}: построено сооружение «${def.name}»`);
       break;
     }
 
