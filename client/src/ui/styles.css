@@ -11,6 +11,24 @@
   --btn: #2a3554;
   --btn-hover: #36446b;
   --radius: 8px;
+  --radius-lg: 14px;
+  --surface: #111830;
+  --surface-2: #172040;
+  --line: rgba(255, 255, 255, 0.08);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.55), 0 2px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+@keyframes modal-fade {
+  from { opacity: 0; }
+}
+
+@keyframes modal-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 * {
@@ -51,9 +69,15 @@ body {
   right: 8px;
   display: flex;
   align-items: center;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   padding: 6px 14px;
   border-radius: var(--radius);
+}
+
+#topbar .turn,
+#topbar button {
+  white-space: nowrap;
 }
 
 #topbar .power {
@@ -127,7 +151,8 @@ button .price .icon {
 }
 
 #topbar .spacer {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 #topbar .turn {
@@ -218,10 +243,17 @@ button {
   padding: 6px 10px;
   cursor: pointer;
   text-align: left;
+  min-width: 0;
+  transition: background 0.12s, border-color 0.12s, transform 0.05s;
 }
 
 button:hover:not(:disabled) {
   background: var(--btn-hover);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 button:disabled {
@@ -235,7 +267,7 @@ button .price {
 }
 
 #log {
-  top: 56px;
+  top: 68px;
   right: 8px;
   width: 260px;
   max-height: 40vh;
@@ -317,33 +349,57 @@ button .price {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(5, 8, 16, 0.75);
+  padding: 16px;
+  background: rgba(5, 8, 16, 0.72);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
+  animation: modal-fade 0.15s ease-out;
 }
 
 /* Окно поверх окна не просвечивает. */
 .modal-backdrop .modal {
-  background: #10162a;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface) 140px);
 }
 
 .modal {
   position: static;
-  width: 380px;
-  padding: 20px 22px;
+  width: min(400px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 22px 24px;
+  border-radius: var(--radius-lg);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: var(--shadow-lg);
+  animation: modal-pop 0.18s ease-out;
+  overflow-wrap: break-word;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .modal h1 {
-  margin: 0 0 14px;
-  font-size: 22px;
+  margin: 0 0 16px;
+  padding-bottom: 12px;
+  font-size: 21px;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  border-bottom: 1px solid var(--line);
 }
 
 .modal label {
   display: block;
   margin: 10px 0 4px;
   color: var(--muted);
+}
+
+.modal input:focus,
+.modal select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(245, 197, 66, 0.25);
 }
 
 .modal input,
@@ -367,19 +423,37 @@ button .price {
   width: 100%;
   text-align: center;
   font-weight: 700;
-  background: #3a6b35;
+  background: linear-gradient(180deg, #4a8443, #3a6b35);
+  border-color: rgba(120, 220, 110, 0.35);
   padding: 10px;
+}
+
+.modal .start:hover:not(:disabled) {
+  background: linear-gradient(180deg, #55954d, #447c3d);
 }
 
 .modal .hint {
   margin-top: 14px;
   font-size: 12px;
+  line-height: 1.5;
   color: var(--muted);
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1200px) {
   #log {
     display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .modal {
+    padding: 18px 16px;
+  }
+  .modal-backdrop {
+    padding: 8px;
+  }
+  .modal.diplo {
+    padding: 14px 14px;
   }
   #panel {
     width: calc(100vw - 16px);
@@ -387,7 +461,7 @@ button .price {
   }
   #corner {
     bottom: auto;
-    top: 56px;
+    top: 132px;
   }
   #minimap {
     width: 160px;
@@ -404,7 +478,7 @@ body.no-game #tileinfo {
 }
 
 .modal.choice {
-  width: 420px;
+  width: min(480px, 100%);
 }
 
 .modal.choice .text {
@@ -420,7 +494,12 @@ body.no-game #tileinfo {
 .modal.choice .options button {
   display: grid;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 11px 14px;
+  background: var(--surface-2);
+}
+
+.modal.choice .options button:hover:not(:disabled) {
+  background: var(--btn-hover);
 }
 
 .modal.choice .options button span {
@@ -489,11 +568,20 @@ body.no-game #forecast {
 
 /* Окно дипломатии */
 .modal.diplo {
-  width: min(900px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
+  width: min(960px, 100%);
+  height: min(760px, 100%);
   display: flex;
   flex-direction: column;
-  padding: 16px 18px;
+  overflow: hidden;
+  padding: 18px 22px;
+}
+
+.modal.diplo:has(> p) {
+  height: auto;
+}
+
+.modal.paths {
+  width: min(1080px, 100%);
 }
 
 .diplo-head {
@@ -502,18 +590,34 @@ body.no-game #forecast {
   justify-content: space-between;
 }
 
+.diplo-head {
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
 .diplo-head h1 {
-  margin: 0 0 10px;
+  margin: 0;
+  border: none;
+  padding-bottom: 12px;
+  flex: 1;
+  min-width: 0;
 }
 
 .diplo-head .close {
-  padding: 4px 10px;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  text-align: center;
+  border-radius: 50%;
 }
 
 .diplo-body {
   display: grid;
-  grid-template-columns: 250px 1fr;
-  gap: 14px;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 18px;
   min-height: 0;
   flex: 1;
 }
@@ -594,9 +698,18 @@ body.no-game #forecast {
 
 .diplo .row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 10px;
-  padding: 2px 0;
+  gap: 0 12px;
+  padding: 3px 0;
+}
+
+/* Длинное значение переносится под подпись, а не сжимает её. */
+.diplo .row > span:last-child,
+#panel .row > span:last-child {
+  flex: 1 1 12ch;
+  min-width: 0;
+  text-align: right;
 }
 
 .diplo .row span:first-child {
@@ -604,9 +717,10 @@ body.no-game #forecast {
 }
 
 .diplo .breakdown {
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
 }
 
 .diplo .good {
@@ -643,14 +757,15 @@ body.no-game #forecast {
 
 .diplo .deal {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) 1.2fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 8px;
   align-items: center;
   margin: 4px 0;
 }
 
 .diplo .proposal {
-  padding: 8px 10px;
+  padding: 10px 12px;
+  background: rgba(245, 197, 66, 0.05);
   border: 1px solid rgba(245, 197, 66, 0.4);
   border-radius: 6px;
   margin-bottom: 6px;
@@ -710,8 +825,8 @@ body.no-game #forecast {
 /* Окно «Пути» */
 .modal.paths .columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 28px;
   overflow-y: auto;
 }
 
@@ -734,11 +849,20 @@ body.no-game #forecast {
 
 .paths .ability {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  gap: 4px 14px;
   align-items: center;
-  padding: 6px 0;
+  padding: 8px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.paths .ability > div:last-child {
+  max-width: 190px;
+  text-align: right;
+}
+
+.paths .ability > div:first-child > .muted:not(.small) {
+  white-space: nowrap;
 }
 
 .paths table.victory {
@@ -765,21 +889,23 @@ body.no-game #forecast {
 
 @media (max-width: 720px) {
   .modal.paths .columns {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
   }
 }
 
 /* ---------- Вход, меню, сохранения, настройки ---------- */
 
-.modal .start.secondary {
+.modal .start.secondary,
+.modal .start.secondary:hover:not(:disabled) {
   background: var(--btn);
+  border-color: var(--panel-border);
   font-weight: 400;
   margin-top: 8px;
 }
 
 .modal.menu {
-  width: 440px;
-  max-width: calc(100vw - 32px);
+  width: min(460px, 100%);
 }
 
 .modal.menu .row {
@@ -797,7 +923,12 @@ body.no-game #forecast {
 .modal.menu .options button {
   display: grid;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 11px 14px;
+  background: var(--surface-2);
+}
+
+.modal.menu .options button:hover:not(:disabled) {
+  background: var(--btn-hover);
 }
 
 .modal.menu .options button span {
