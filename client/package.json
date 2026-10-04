@@ -16,6 +16,7 @@
     "pixi.js": "^8.22.0"
   },
   "devDependencies": {
+    "@iconify-json/game-icons": "^1.2.4",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
     "vitest": "^5.0.3"

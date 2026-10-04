@@ -39,6 +39,7 @@ import {
 } from '../core';
 import { NONE } from '../core/types';
 import { esc, showChoice } from './dialog';
+import { escIcons, icon } from './icons';
 
 export interface DiplomacyHost {
   readonly state: GameState;
@@ -190,7 +191,7 @@ export class DiplomacyWindow {
     const v = validate(this.host.state, cmd);
     const reason = opts.blocker ?? (v.ok ? null : v.reason);
     const i = this.actions.push({ cmd, confirm: opts.confirm }) - 1;
-    return `<button data-i="${i}" class="${opts.cls ?? ''}" ${reason ? 'disabled' : ''} title="${esc(reason ?? '')}">${esc(label)}</button>`;
+    return `<button data-i="${i}" class="${opts.cls ?? ''}" ${reason ? 'disabled' : ''} title="${esc(reason ?? '')}">${escIcons(label)}</button>`;
   }
 
   /** Прогноз ответа бота на сделку: «согласятся» или «Нет: …» с разбивкой во всплывающей подсказке. */
@@ -214,7 +215,7 @@ export class DiplomacyWindow {
       .map((p) => {
         const pw = state.powers[p];
         const op = opinion(state, p, power).total;
-        const badge = pending.some((pr) => pr.from === p) ? ' 📜' : '';
+        const badge = pending.some((pr) => pr.from === p) ? ` ${icon('proposal')}` : '';
         return `<li data-target="${p}" class="${p === this.target ? 'selected' : ''}">
           <span class="swatch" style="background:${pw.color}"></span>
           <span class="name">${esc(pw.name)}${badge}</span>
@@ -285,8 +286,8 @@ export class DiplomacyWindow {
     const a = pathsConfig.abilities;
     const use = (ability: 'recon' | 'propaganda' | 'callPeace', victim = NONE) => ({ ...NO_TARGET, ability, target: t, victim });
     const row = (label: string, u: ReturnType<typeof use>, note: string) => {
-      const icon = a[u.ability].path === 'science' ? '🔬' : '🎭';
-      return `<div class="deal">${this.button(`${label} (${abilityCost(state, power, u)} ${icon})`, { type: 'UseAbility', power, ...u })}<div class="muted small">${esc(note)}</div></div>`;
+      const res = a[u.ability].path === 'science' ? '🔬' : '🎭';
+      return `<div class="deal">${this.button(`${label} (${abilityCost(state, power, u)} ${res})`, { type: 'UseAbility', power, ...u })}<div class="muted small">${esc(note)}</div></div>`;
     };
     let html = '<h3>Способности</h3>';
     html += row('Разведка', use('recon'), `${a.recon.turns} ходов видны все их юниты`);
@@ -330,7 +331,7 @@ export class DiplomacyWindow {
       const v = validate(state, cmd);
       const i = this.actions.push({ cmd }) - 1;
       const tip = v.ok ? f.notes.join('\n') : v.reason;
-      return `<button data-i="${i}" ${v.ok ? '' : 'disabled'} title="${esc(tip)}">${esc(label)}</button>`;
+      return `<button data-i="${i}" ${v.ok ? '' : 'disabled'} title="${esc(tip)}">${escIcons(label)}</button>`;
     };
     return `<h3>Подарки</h3>
       <div class="muted small">Ценность — в ходах дохода получателя; повторный подарок за ${diplomacyConfig.gift.repeatWindow} ходов вдвое слабее, максимум +${diplomacyConfig.gift.max}.</div>
@@ -375,7 +376,7 @@ export class DiplomacyWindow {
     if (!amounts.includes(this.joinGold)) this.joinGold = 0;
     let html = `<h3>Помощь в войне</h3>
       <label class="small">Плата: <select data-field="joinGold">${amounts
-        .map((g) => `<option value="${g}" ${g === this.joinGold ? 'selected' : ''}>${g ? `${g} 🪙` : 'без платы'}</option>`)
+        .map((g) => `<option value="${g}" ${g === this.joinGold ? 'selected' : ''}>${g ? `${g} золота` : 'без платы'}</option>`)
         .join('')}</select></label>`;
     for (const e of enemies) {
       html += this.dealRow(`Вступить в войну против: ${state.powers[e].name}`, { kind: 'joinWar', enemy: e, gold: this.joinGold });
@@ -400,7 +401,7 @@ export class DiplomacyWindow {
     const goldOptions = (max: number, value: number) =>
       [0, 25, 50, 100, 200, 400]
         .filter((g) => g === 0 || g <= max)
-        .map((g) => `<option value="${g}" ${g === value ? 'selected' : ''}>${g ? `${g} 🪙` : 'нет'}</option>`)
+        .map((g) => `<option value="${g}" ${g === value ? 'selected' : ''}>${g ? `${g} золота` : 'нет'}</option>`)
         .join('');
     const cityOptions = (owner: number, value: number) =>
       [`<option value="${NONE}">нет</option>`]

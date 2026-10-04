@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Нарезка листов юнитов, сгенерированных ИИ, в атласы для игры.
 
-Вход:  art-src/<тип>.(png|webp) — 5 фигур в ряд (эпохи 0–4), одежда цвета нации — пурпур #FF00FF,
+Вход:  art-src/<тип>.(png|webp|jpg) — 5 фигур в ряд (эпохи 0–4), одежда цвета нации — пурпур #FF00FF,
        фон прозрачный или белый.
 Выход: src/render/sprites/art/<тип>.png       — фигуры, пурпур заменён серым;
        src/render/sprites/art/<тип>-mask.png  — маска цвета нации (яркость пурпура + альфа);
@@ -26,9 +26,14 @@ EPOCHS = 5
 # Рост фигуры в атласе, px: на карте фигура ~48 px, запас — для приближения.
 TARGET_HEIGHT = 144
 PAD = 2
+# Замкнутые куски белого фона внутри фигуры (между луком и тетивой) от этой площади (px исходника)
+# тоже считаются фоном. Только для листов, где белого в самих фигурах крупными пятнами нет.
+HOLES = {'archer': 1000, 'citizen': 300}
+# Мелкий кусок дальше этого расстояния от крупной фигуры — мусор фона, а не кончик оружия.
+ATTACH_DISTANCE = 6
 
 
-def load(path: Path) -> np.ndarray:
+def load(path: Path, holes: int | None = None) -> np.ndarray:
     img = np.asarray(Image.open(path).convert('RGBA')).astype(np.float32) / 255
     if img[..., 3].min() < 0.5:
         return img
@@ -38,6 +43,9 @@ def load(path: Path) -> np.ndarray:
     labels, _ = ndimage.label(whitish)
     edge = set(np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]]))) - {0}
     bg = np.isin(labels, list(edge))
+    if holes:
+        sizes = ndimage.sum(whitish, labels, range(1, labels.max() + 1))
+        bg |= np.isin(labels, [i + 1 for i, size in enumerate(sizes) if size >= holes])
     near = ndimage.binary_dilation(bg, iterations=2) & ~bg
     alpha = np.ones(rgb.shape[:2], np.float32)
     alpha[bg] = 0
@@ -61,6 +69,10 @@ def figures(img: np.ndarray) -> list[np.ndarray]:
     dist = np.stack([ndimage.distance_transform_edt(labels != b) for b in big])
     owner = np.array(big)[dist.argmin(axis=0)]
     member = np.where(labels > 0, owner, 0)
+    # Куски, ни одним пикселем не подходящие к фигуре ближе ATTACH_DISTANCE, — мусор.
+    near = ndimage.minimum(dist.min(axis=0), labels, range(1, n + 1))
+    junk = [i + 1 for i, d in enumerate(near) if d > ATTACH_DISTANCE]
+    member[np.isin(labels, junk)] = 0
     out = []
     for b in sorted(big, key=lambda b: ndimage.center_of_mass(labels == b)[1]):
         ys, xs = ndimage.find_objects((member == b).astype(int))[0]
@@ -97,7 +109,7 @@ def resize(img: Image.Image, scale: float) -> Image.Image:
 
 
 def process(kind: str, path: Path) -> dict:
-    img = load(path)
+    img = load(path, HOLES.get(kind))
     crops = figures(img)
     heights = sorted(c.shape[0] for c in crops)
     scale = TARGET_HEIGHT / heights[len(heights) // 2]
@@ -135,7 +147,7 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     meta = {}
     for kind in TYPES:
-        src = next((p for p in (SRC / f'{kind}.png', SRC / f'{kind}.webp') if p.exists()), None)
+        src = next((p for ext in ('png', 'webp', 'jpg') if (p := SRC / f'{kind}.{ext}').exists()), None)
         if src:
             meta[kind] = process(kind, src)
             print(kind, 'ok', [f"{f['w']}x{f['h']}" for f in meta[kind]['frames']])

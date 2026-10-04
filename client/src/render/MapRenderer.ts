@@ -21,9 +21,10 @@ import {
   type Unit,
   type UnitType,
 } from '../core/types';
+import { iconSvg, type IconName } from '../ui/icons';
 import { EDGE_CORNERS, HEX_SIZE, TILT, hexCorners, pixelToTile, tileCenter, worldSize } from './layout';
 import { darken, hexColor, palette } from './palette';
-import { drawUnitArt, hasUnitArt } from './sprites/art';
+import { ART_ANCHOR, ART_H, ART_W, drawUnitArt, hasUnitArt, unitArtHeight } from './sprites/art';
 import { SpriteCache } from './sprites/cache';
 import { CITY_ANCHOR, CITY_SPRITE_H, CITY_SPRITE_W, citySvg } from './sprites/cities';
 import { UNIT_ANCHOR, UNIT_SPRITE_H, UNIT_SPRITE_W, figuresForLevel, unitSvg } from './sprites/units';
@@ -35,6 +36,9 @@ const MAX_SCALE = 2.5;
 const LABEL_MIN_SCALE = 0.45;
 /** Масштаб спрайтов на карте (гекс — около 55 пикселей в ширину). */
 const UNIT_SCALE = 1;
+/** Иконки особых клеток на карте и их размер. */
+const SPECIAL_ICONS: Record<number, IconName> = { [S_GOLD]: 'gold', [S_MARBLE]: 'marble', [S_RUINS]: 'ruins' };
+const SPECIAL_ICON_SIZE = 20;
 const CITY_SCALE = 0.95;
 /** Объём (в пикселях мира): обрыв суши к воде и подъём холмов и гор над равниной. */
 const COAST_DEPTH = 6;
@@ -193,6 +197,8 @@ export class MapRenderer {
   private waterLayer = new Container();
   private landLayer = new Container();
   private decorLayer = new Container();
+  /** Иконки особых клеток (золото, мрамор, руины) — спрайты поверх деталей местности. */
+  private specialLayer = new Container();
   private territoryLayer = new Container();
   private reachLayer = new Graphics();
   private cityLayer = new Container();
@@ -223,6 +229,7 @@ export class MapRenderer {
       this.landLayer,
       this.territoryLayer,
       this.decorLayer,
+      this.specialLayer,
       this.reachLayer,
       this.cityLayer,
       this.unitUnder,
@@ -257,7 +264,7 @@ export class MapRenderer {
   setGame(state: GameState): void {
     this.state = state;
     this.size = { width: state.map.width, height: state.map.height };
-    for (const layer of [this.waterLayer, this.landLayer, this.decorLayer, this.territoryLayer, this.fogLayer, this.cityLayer, this.labelLayer]) {
+    for (const layer of [this.waterLayer, this.landLayer, this.decorLayer, this.specialLayer, this.territoryLayer, this.fogLayer, this.cityLayer, this.labelLayer]) {
       layer.removeChildren().forEach((c) => c.destroy());
     }
     this.cityViews.clear();
@@ -293,6 +300,7 @@ export class MapRenderer {
         this.chunks.push(chunk);
       }
     }
+    this.drawSpecials();
     this.overlay = EMPTY_OVERLAY;
     this.refresh(state);
   }
@@ -326,6 +334,7 @@ export class MapRenderer {
     if (simple === this.simple) return;
     this.simple = simple;
     for (const chunk of this.chunks) this.drawTerrain(chunk);
+    this.drawSpecials();
     for (const view of this.cityViews.values()) view.key = '';
     if (this.state) this.refresh(this.state);
   }
@@ -479,8 +488,8 @@ export class MapRenderer {
         else if (type === T_ROUGH) decor.poly([x - 5, y + 4, x, y - 6, x + 5, y + 4]).fill(palette.tree);
       } else if (type === T_ROUGH) this.drawTrees(decor, x, y - ROUGH_LIFT, t);
       else if (type === T_MOUNTAIN) this.drawMountain(decor, x, y - MOUNTAIN_LIFT);
-      const sp = special[t];
-      if (sp !== 0) this.drawSpecial(decor, x, y - (simple ? 0 : terrainLift(type)), sp);
+      // Подложка под иконку особой клетки (сама иконка — спрайт в specialLayer).
+      if (special[t] !== 0) decor.circle(x + 13, y - (simple ? 0 : terrainLift(type)) - 12, 12.5).fill({ color: 0x000000, alpha: 0.4 });
     }
   }
 
@@ -532,20 +541,22 @@ export class MapRenderer {
     g.poly([x - 7, y - 11, x - 2, y - 22, x + 3, y - 12, x - 2, y - 14]).fill(palette.snow);
   }
 
-  private drawSpecial(g: Graphics, x: number, y: number, sp: number): void {
-    const cx = x + 12;
-    const cy = y - 10;
-    g.circle(cx, cy, 8).fill({ color: 0x000000, alpha: 0.35 });
-    if (sp === S_GOLD) {
-      g.circle(cx, cy, 6).fill(palette.gold).stroke({ width: 1.5, color: 0x8a6a10 });
-      g.rect(cx - 1, cy - 3, 2, 6).fill(0x8a6a10);
-    } else if (sp === S_MARBLE) {
-      g.poly([cx, cy - 7, cx + 6, cy, cx, cy + 7, cx - 6, cy]).fill(palette.marble).stroke({ width: 1.5, color: 0x8f8f8f });
-    } else if (sp === S_RUINS) {
-      g.rect(cx - 6, cy - 6, 12, 2).fill(palette.ruins);
-      g.rect(cx - 5, cy - 4, 2, 9).fill(palette.ruins);
-      g.rect(cx + 3, cy - 4, 2, 9).fill(palette.ruins);
-      g.rect(cx - 7, cy + 5, 14, 2).fill(palette.ruins);
+  /** Иконки особых клеток. Перерисовываются целиком: таких клеток мало. */
+  private drawSpecials(): void {
+    this.specialLayer.removeChildren().forEach((c) => c.destroy());
+    const state = this.state;
+    if (!state) return;
+    const { terrain, special } = state.map;
+    for (let t = 0; t < special.length; t++) {
+      const name = SPECIAL_ICONS[special[t]];
+      if (!name) continue;
+      const texture = this.sprites.get(`i|${name}`, SPECIAL_ICON_SIZE, SPECIAL_ICON_SIZE, () => iconSvg(name, SPECIAL_ICON_SIZE));
+      if (!texture) continue;
+      const { x, y } = tileCenter(this.size, t);
+      const sprite = new Sprite(texture);
+      sprite.anchor.set(0.5);
+      sprite.position.set(x + 13, y - (this.simple ? 0 : terrainLift(terrain[t])) - 12);
+      this.specialLayer.addChild(sprite);
     }
   }
 
@@ -649,6 +660,7 @@ export class MapRenderer {
         view.sprite.texture = this.sprites.get(view.spriteKey, CITY_SPRITE_W, CITY_SPRITE_H, () => '') ?? Texture.EMPTY;
       }
     }
+    this.drawSpecials();
     this.drawUnits();
     this.requestRender();
   }
@@ -771,9 +783,10 @@ export class MapRenderer {
     const epoch = epochOf(owner);
     const enemy = atWar(state, state.humanPower, unit.owner);
     const figures = figuresForLevel(unit.type, unit.level);
+    const art = hasUnitArt(unit.type);
     const texture = this.simple
       ? null
-      : hasUnitArt(unit.type)
+      : art
         ? this.sprites.getDrawn(`ua|${unit.type}|${epoch}|${owner.color}`, () => drawUnitArt(unit.type, epoch, owner.color))
         : this.sprites.get(`u|${unit.type}|${epoch}|${owner.color}|${figures}`, UNIT_SPRITE_W, UNIT_SPRITE_H, () =>
             unitSvg(unit.type, epoch, owner.color, figures),
@@ -791,17 +804,18 @@ export class MapRenderer {
       let sprite = this.unitPool[used];
       if (!sprite) {
         sprite = new Sprite();
-        sprite.anchor.set(UNIT_ANCHOR.x / UNIT_SPRITE_W, UNIT_ANCHOR.y / UNIT_SPRITE_H);
         sprite.scale.set(UNIT_SCALE);
         this.unitPool.push(sprite);
         this.unitSprites.addChild(sprite);
       }
       sprite.texture = texture;
+      if (art) sprite.anchor.set(ART_ANCHOR.x / ART_W, ART_ANCHOR.y / ART_H);
+      else sprite.anchor.set(UNIT_ANCHOR.x / UNIT_SPRITE_W, UNIT_ANCHOR.y / UNIT_SPRITE_H);
       sprite.position.set(bx, by);
       sprite.visible = true;
       used++;
       cx = bx;
-      top = by - 50 * UNIT_SCALE;
+      top = by - (art ? unitArtHeight(unit.type) + 2 : 50) * UNIT_SCALE;
       bottom = by + 5 * UNIT_SCALE;
     } else {
       const ux = onCity ? x - 15 : x;
