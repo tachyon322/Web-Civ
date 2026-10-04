@@ -293,10 +293,17 @@ class Composer {
   }
 }
 
+/**
+ * Громкость записанных треков относительно группы музыки: группа усилена под тихий синтез,
+ * сведённая запись без поправки упиралась бы в лимитер.
+ */
+const FILE_GAIN = 0.3;
+
 /** Плейлист из файлов: играет по кругу, во время войны — «военные» треки, если есть. */
 class Playlist {
   private audio = new Audio();
   private index = 0;
+  private current: { url: string; war: boolean } | null = null;
   mood: Mood = 'peace';
 
   constructor(
@@ -304,8 +311,16 @@ class Playlist {
     private tracks: { url: string; war: boolean }[],
   ) {
     this.audio.crossOrigin = 'anonymous';
-    m.ctx.createMediaElementSource(this.audio).connect(m.music);
+    const gain = m.ctx.createGain();
+    gain.gain.value = FILE_GAIN;
+    m.ctx.createMediaElementSource(this.audio).connect(gain).connect(m.music);
     this.audio.addEventListener('ended', () => this.next());
+  }
+
+  /** Сменилось настроение: трек меняется, только если есть треки под новое настроение. */
+  moodChanged(): void {
+    const war = this.mood === 'war';
+    if (this.current && this.current.war !== war && this.tracks.some((t) => t.war === war)) this.next();
   }
 
   start(): void {
@@ -320,7 +335,8 @@ class Playlist {
   next(): void {
     const pool = this.tracks.filter((t) => t.war === (this.mood === 'war'));
     const list = pool.length ? pool : this.tracks;
-    this.audio.src = list[this.index++ % list.length].url;
+    this.current = list[this.index++ % list.length];
+    this.audio.src = this.current.url;
     void this.audio.play().catch(() => {});
   }
 }
@@ -347,7 +363,7 @@ export function setMusicMood(mood: Mood): void {
   wanted = mood;
   if (!player) return;
   player.mood = mood;
-  if (player instanceof Playlist) player.next();
+  if (player instanceof Playlist) player.moodChanged();
 }
 
 export function setMusicEnabled(on: boolean): void {
