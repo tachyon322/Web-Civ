@@ -83,6 +83,7 @@ import { computeVisible } from '../core/visibility';
 import { EMPTY_OVERLAY, type MapRenderer, type Overlay } from '../render/MapRenderer';
 import type { Minimap } from '../render/minimap';
 import { esc, showChoice } from './dialog';
+import { escIcons, icon } from './icons';
 import { PathsWindow } from './paths';
 import { DiplomacyWindow, statusText } from './diplomacy';
 
@@ -644,18 +645,18 @@ export class GameController {
     const intent = this.intentFor(unit, h);
     if (intent.kind === 'attack') {
       el.innerHTML = intent.blocker
-        ? `<div class="title">⚔ Атака невозможна</div><div class="reason">${esc(this.explainBlocker(intent.blocker, h))}</div>`
+        ? `<div class="title">${icon('war')} Атака невозможна</div><div class="reason">${esc(this.explainBlocker(intent.blocker, h))}</div>`
         : this.forecastHtml(forecastAttack(this.state, unit, h));
     } else if (intent.kind === 'capture') {
       el.innerHTML = intent.blocker
-        ? `<div class="title">🏳 ${esc(intent.city.name)}: прочность 0</div><div class="reason">${esc(intent.blocker)}</div>`
-        : `<div class="title">🏳 Захватить ${esc(intent.city.name)} — ПКМ</div><div class="mods">присоединить, разграбить или освободить</div>`;
+        ? `<div class="title">${icon('capture')} ${esc(intent.city.name)}: прочность 0</div><div class="reason">${esc(intent.blocker)}</div>`
+        : `<div class="title">${icon('capture')} Захватить ${esc(intent.city.name)} — ПКМ</div><div class="mods">присоединить, разграбить или освободить</div>`;
     } else if (intent.kind === 'merge') {
       const level = unit.level + 1;
-      el.innerHTML = `<div class="title">⇄ Слияние — ПКМ</div>
+      el.innerHTML = `<div class="title">${icon('merge')} Слияние — ПКМ</div>
         <div class="mods">${esc(unitTitle(this.state, unit))} + ${esc(unitTitle(this.state, intent.target))} → ${level} ур., сила ${fmt(unit.strength + intent.target.strength)} из ${2 ** (level - 1)}</div>`;
     } else if (intent.kind === 'transfer') {
-      el.innerHTML = `<div class="title">⇢ Переброска в ${esc(intent.city.name)} — ПКМ</div>
+      el.innerHTML = `<div class="title">${icon('transfer')} Переброска в ${esc(intent.city.name)} — ПКМ</div>
         <div class="mods">по сети городов за ${balance.units.transferCost} очко хода</div>`;
     } else {
       el.innerHTML = '';
@@ -675,7 +676,7 @@ export class GameController {
     const side = (label: string, before: number, after: number, unitWord: string) =>
       `<span>${label}: ${unitWord} ${fmt(before)} → <span class="${after < before ? 'loss' : ''}">${fmt(after)}</span>${after <= 0 && unitWord === 'сила' ? ' (гибнет)' : ''}</span>`;
     const defWord = f.target === 'city' ? 'прочность' : 'сила';
-    return `<div class="title">⚔ ${esc(f.attacker.name)} → ${esc(f.defender.name)}${f.ranged ? ' (без ответа)' : ''}</div>
+    return `<div class="title">${icon('war')} ${esc(f.attacker.name)} → ${esc(f.defender.name)}${f.ranged ? ' (без ответа)' : ''}</div>
       <div class="side">${side('Вы', f.attacker.before, f.attacker.after, 'сила')}<span>в бою ${fmt(f.attacker.effective)}</span></div>
       <div class="mods">${mods(f.attacker.modifiers)}</div>
       <div class="side">${side('Враг', f.defender.before, f.defender.after, defWord)}<span>в бою ${fmt(f.defender.effective)}</span></div>
@@ -688,9 +689,9 @@ export class GameController {
     const state = this.state;
     const p = state.powers[this.power];
     const income = computeIncome(state, this.power);
-    const res = (id: 'gold' | 'science' | 'culture', icon: string, value: number) => `
+    const res = (id: 'gold' | 'science' | 'culture', value: number) => `
       <span class="res ${id}" title="${esc(`${RES_NAMES[id]}: ${value}\n\n${breakdownTitle(income[id])}`)}">
-        ${icon} <b>${value}</b><span class="delta">(${signed(income[id].total)})</span>
+        ${icon(id)} <b>${value}</b><span class="delta">(${signed(income[id].total)})</span>
       </span>`;
     const wars = p.wars.map((w) => state.powers[w].name);
     const pending = pendingProposals(state, this.power).length;
@@ -703,21 +704,21 @@ export class GameController {
     const stabilityTitle = `Стабильность: ${p.stability} — ${level.name}\n\n${stab.items.map((i) => `${i.label}: ${signed(i.value)}`).join('\n')}\n\nПодробнее — в окне «Пути» (P)`;
     this.ui.topbar.innerHTML = `
       <span class="power"><span class="swatch" style="background:${p.color}"></span>${esc(p.name)}</span>
-      ${res('gold', '🪙', p.gold)}
-      ${res('science', '🔬', p.science)}
-      ${res('culture', '🎭', p.culture)}
-      <span class="res" title="${esc(epochTitle)}">⏳ <b>${esc(epochName(epoch))}</b></span>
-      <span class="res stability ${level.combat !== 1 ? 'bad' : ''}" title="${esc(stabilityTitle)}">⚖ <b>${p.stability}</b> ${esc(level.name.toLowerCase())}</span>
-      <span class="res" title="${esc(deterrenceTitle('Индекс сдерживания: насколько дорого на вас напасть. Боты нападают, если их армия сильнее.', deterrence))}">🛡 <b>${fmt(deterrence.total)}</b></span>
-      ${wars.length ? `<span class="wars">⚔ Война: ${esc(wars.join(', '))}</span>` : ''}
+      ${res('gold', p.gold)}
+      ${res('science', p.science)}
+      ${res('culture', p.culture)}
+      <span class="res" title="${esc(epochTitle)}">${icon('epoch')} <b>${esc(epochName(epoch))}</b></span>
+      <span class="res stability ${level.combat !== 1 ? 'bad' : ''}" title="${esc(stabilityTitle)}">${icon('stability')} <b>${p.stability}</b> ${esc(level.name.toLowerCase())}</span>
+      <span class="res" title="${esc(deterrenceTitle('Индекс сдерживания: насколько дорого на вас напасть. Боты нападают, если их армия сильнее.', deterrence))}">${icon('deterrence')} <b>${fmt(deterrence.total)}</b></span>
+      ${wars.length ? `<span class="wars">${icon('war')} Война: ${esc(wars.join(', '))}</span>` : ''}
       ${p.suzerain !== NONE ? `<span class="wars" title="Вассал платит дань, воюет на стороне сюзерена и не заключает союзов">Вассал державы ${esc(state.powers[p.suzerain].name)}</span>` : ''}
-      ${state.coalitionLeader !== NONE ? `<span class="wars" title="Держава близка к победе: остальные собирают коалицию">⚠ Лидер: ${esc(state.powers[state.coalitionLeader].name)}</span>` : ''}
-      ${p.secession ? `<span class="wars" title="Стабильность ниже ${pathsConfig.stability.secessionBelow}: самый недовольный город отделится">⚠ Мятежи: ${esc(findCity(state, p.secession.cityId)?.name ?? '')} через ${Math.max(0, p.secession.due - state.turn)} х.</span>` : ''}
+      ${state.coalitionLeader !== NONE ? `<span class="wars" title="Держава близка к победе: остальные собирают коалицию">${icon('warning')} Лидер: ${esc(state.powers[state.coalitionLeader].name)}</span>` : ''}
+      ${p.secession ? `<span class="wars" title="Стабильность ниже ${pathsConfig.stability.secessionBelow}: самый недовольный город отделится">${icon('warning')} Мятежи: ${esc(findCity(state, p.secession.cityId)?.name ?? '')} через ${Math.max(0, p.secession.due - state.turn)} х.</span>` : ''}
       <span class="spacer"></span>
-      <button data-action="paths" title="Эпоха, стабильность, способности, проекты и победы (P)">✨ Пути</button>
-      <button data-action="diplomacy" title="Отношения, договоры, мир и войны (D)">🤝 Дипломатия${pending ? ` · 📜 ${pending}` : ''}</button>
+      <button data-action="paths" title="Эпоха, стабильность, способности, проекты и победы (P)">${icon('paths')} Пути</button>
+      <button data-action="diplomacy" title="Отношения, договоры, мир и войны (D)">${icon('diplomacy')} Дипломатия${pending ? ` · ${icon('proposal')} ${pending}` : ''}</button>
       <span class="turn">Ход ${state.turn} · сид ${state.settings.seed}</span>
-      <button data-action="menu" title="Сохранить, загрузить, настройки, новая партия">☰ Меню</button>`;
+      <button data-action="menu" title="Сохранить, загрузить, настройки, новая партия">${icon('menu')} Меню</button>`;
   }
 
   private renderLog(): void {
@@ -751,7 +752,7 @@ export class GameController {
     const reason = v.ok ? '' : v.reason;
     const i = this.panelCommands.push(cmd) - 1;
     return `<button data-action="cmd" data-i="${i}" ${v.ok ? '' : 'disabled'} title="${esc(reason)}">
-      ${esc(label)}${price !== null ? `<span class="price">${esc(price)}</span>` : ''}
+      ${escIcons(label)}${price !== null ? `<span class="price">${escIcons(price)}</span>` : ''}
     </button>${reason && showReason ? `<div class="reason">${esc(reason)}</div>` : ''}`;
   }
 
@@ -760,7 +761,7 @@ export class GameController {
     const v = validate(this.state, cmd);
     const reason = v.ok ? '' : v.reason;
     return `<button data-action="${action}" ${extra} ${v.ok ? '' : 'disabled'} title="${esc(reason)}">
-      ${esc(label)}${price !== null ? `<span class="price">${price} 🪙</span>` : ''}
+      ${esc(label)}${price !== null ? `<span class="price">${price} ${icon('gold')}</span>` : ''}
     </button>${reason && showReason ? `<div class="reason">${esc(reason)}</div>` : ''}`;
   }
 
@@ -778,7 +779,7 @@ export class GameController {
     if (!state.powers[this.power].met.includes(owner)) return html;
     const op = opinion(state, owner, this.power);
     html += `<div class="row" title="${esc(breakdownTitle(op).replace(/ за ход$/, ''))}"><span>Отношение к вам</span><span>${signed(op.total)}</span></div>`;
-    return html + `<div class="actions"><button data-action="diplomacy" data-target="${owner}">🤝 Дипломатия: ${esc(p.name)} (D)</button></div>`;
+    return html + `<div class="actions"><button data-action="diplomacy" data-target="${owner}">${icon('diplomacy')} Дипломатия: ${esc(p.name)} (D)</button></div>`;
   }
 
   private unitPanel(unit: Unit): string {
@@ -787,7 +788,7 @@ export class GameController {
     const own = unit.owner === this.power;
     const city = cityAt(state, unit.tile);
     const max = unitMaxStrength(unit);
-    const stars = unit.stars ? ` <span class="stars">${'★'.repeat(unit.stars)}</span>` : '';
+    const stars = unit.stars ? ` <span class="stars">${icon('star').repeat(unit.stars)}</span>` : '';
     let html = `<h2>${esc(unitTitle(this.state, unit))}${stars}</h2><div class="sub">${esc(owner.name)}${
       unit.type !== 'citizen' ? ` · людей ${unitPeople(unit)}` : ''
     }</div>
@@ -871,7 +872,7 @@ export class GameController {
     html += `<div class="row"><span>Клетки</span><span>${tiles} / ${cityTileLimit(state, city)}</span></div>
       <div class="row"><span>Слоты зданий</span><span>${city.buildings.length} / ${citySlots(city)}</span></div>`;
     const inc = this.cityIncome(city);
-    html += `<div class="row"><span>Даёт за ход</span><span>🪙 ${inc.gold} · 🔬 ${inc.science} · 🎭 ${inc.culture}</span></div>`;
+    html += `<div class="row"><span>Даёт за ход</span><span>${icon('gold')} ${inc.gold} · ${icon('science')} ${inc.science} · ${icon('culture')} ${inc.culture}</span></div>`;
     const capital = findCity(state, owner.capitalId);
     if (capital && capital.id !== city.id) {
       const label = computeNetwork(state, this.power);

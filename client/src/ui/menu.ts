@@ -132,6 +132,7 @@ export function showMainMenu(host: MenuHost, inGame: boolean): void {
         <button data-action="settings"><b>Настройки</b><span>простая графика</span></button>
       </div>
       ${host.saves.available ? '' : '<div class="reason">Браузер не даёт сохранять данные на этом сайте — сохранения недоступны.</div>'}
+      <div class="credits">Иконки: <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a> (CC BY 3.0)</div>
     </div>`,
     async (action, _el, m) => {
       if (action === 'close') m.close();

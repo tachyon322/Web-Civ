@@ -27,6 +27,7 @@ import {
   type GameState,
 } from '../core';
 import { esc } from './dialog';
+import { icon } from './icons';
 
 export interface PathsHost {
   readonly state: GameState;
@@ -164,7 +165,7 @@ export class PathsWindow {
     const p = state.powers[power];
     const list = (Object.keys(pathsConfig.abilities) as AbilityId[]).map((id) => {
       const def = pathsConfig.abilities[id];
-      const icon = def.path === 'science' ? '🔬' : '🎭';
+      const res = icon(def.path === 'science' ? 'science' : 'culture');
       const use = { ...NO_TARGET, ability: id };
       const cost = id === 'convert' ? `${pathsConfig.abilities.convert.costPerPerson} за человека` : String(abilityCost(state, power, use));
       let action = `<span class="muted small">${esc(WHERE[id] ?? '')}</span>`;
@@ -174,9 +175,9 @@ export class PathsWindow {
         const i = this.actions.push(cmd) - 1;
         action = `<button data-i="${i}" ${blocker ? 'disabled' : ''} title="${esc(blocker ?? '')}">Применить</button>${blocker ? `<div class="reason">${esc(blocker)}</div>` : ''}`;
       }
-      return `<div class="ability"><div><b>${esc(def.name)}</b> <span class="muted">${icon} ${esc(cost)}</span><div class="muted small">${esc(DESCRIPTIONS[id])}</div></div><div>${action}</div></div>`;
+      return `<div class="ability"><div><b>${esc(def.name)}</b> <span class="muted">${res} ${esc(cost)}</span><div class="muted small">${esc(DESCRIPTIONS[id])}</div></div><div>${action}</div></div>`;
     });
-    return `<h3>Способности <span class="muted small">(у вас 🔬 ${p.science}, 🎭 ${p.culture})</span></h3>
+    return `<h3>Способности <span class="muted small">(у вас ${icon('science')} ${p.science}, ${icon('culture')} ${p.culture})</span></h3>
       <div class="muted small">Наука и культура — и счёт к победе, и валюта: каждая трата отодвигает финальный проект.</div>
       ${list.join('')}`;
   }
@@ -193,7 +194,7 @@ export class PathsWindow {
           ? `эпоха «${epochName(LAST_EPOCH)}» (${epochOf(p) >= LAST_EPOCH ? 'есть' : 'нет'})`
           : `${cfg.culture.wonders} чуда света (у вас ${wondersOwned(state, power)})`;
       return `<div class="row"><span>${esc(projectName(kind))}: ${stages}/${PROJECT_STAGES}${city ? ` в городе ${esc(city.name)}` : ''}</span>
-        <span>этапы ${cfg[kind].stages.join(' / ')} ${kind === 'science' ? '🔬' : '🎭'}</span></div>
+        <span>этапы ${cfg[kind].stages.join(' / ')} ${icon(kind)}</span></div>
         <div class="muted small">Условие: ${esc(cond)}. Этап выкупается в панели города (одна покупка за ход); если город захватят — прогресс сгорает.</div>`;
     };
     return `<h3>Финальные проекты</h3>${row('science')}${row('culture')}`;
@@ -227,7 +228,7 @@ export class PathsWindow {
       .map((b) => {
         const city = wonderCity(state, b.id);
         const where = city ? (explored[city.tile] ? `${city.name} (${state.powers[city.owner].name})` : 'построено где-то в мире') : 'свободно';
-        return `<div class="row"><span>${esc(b.name)} <span class="muted small">с эпохи «${esc(epochName(b.epoch ?? 0))}», ${b.basePrice} 🪙</span></span><span>${esc(where)}</span></div>`;
+        return `<div class="row"><span>${esc(b.name)} <span class="muted small">с эпохи «${esc(epochName(b.epoch ?? 0))}», ${b.basePrice} ${icon('gold')}</span></span><span>${esc(where)}</span></div>`;
       })
       .join('');
     return `<h3>Чудеса света</h3><div class="muted small">Одно на весь мир; в городе с мрамором на ${pathsConfig.culture.wonderMarbleDiscount * 100}% дешевле.</div>${rows}`;

@@ -5,6 +5,7 @@ import { MapRenderer } from './render/MapRenderer';
 import { Minimap } from './render/minimap';
 import { AUTO_SLOT, SaveStore } from './save/storage';
 import { GameController } from './ui/controller';
+import { installIcons } from './ui/icons';
 import { attachMapInput } from './ui/input';
 import { showLogin, showMainMenu, type MenuHost } from './ui/menu';
 import { showNewGameDialog } from './ui/newGame';
@@ -13,6 +14,7 @@ import { loadSettings, saveSettings, type Settings } from './ui/settings';
 async function main(): Promise<void> {
   const app = document.getElementById('app')!;
   document.body.classList.add('no-game');
+  installIcons();
   app.innerHTML = `
     <div id="map"></div>
     <header id="topbar" class="panel"></header>
