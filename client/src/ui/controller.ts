@@ -107,6 +107,7 @@ import type { Cue } from '../audio/sfx';
 import { PathsWindow } from './paths';
 import { DiplomacyWindow, statusText } from './diplomacy';
 import { flagFor } from './flags';
+import { showWarSummary } from './warSummary';
 
 type Selection = { kind: 'unit'; id: number } | { kind: 'city'; id: number } | null;
 
@@ -251,6 +252,8 @@ export class GameController {
       if (target.closest('[data-action="menu"]')) this.onMenu?.();
       if (target.closest('[data-action="diplomacy"]')) this.diplomacy.open();
       if (target.closest('[data-action="paths"]')) this.paths.open();
+      const war = target.closest<HTMLElement>('[data-war]');
+      if (war) showWarSummary(this.state, this.power, Number(war.dataset.war), (t) => this.diplomacy.open(t));
     });
     window.addEventListener('keydown', (e) => this.onKey(e));
     renderer.onViewChange = () => minimap.drawView();
@@ -864,7 +867,7 @@ export class GameController {
       <span class="res" title="${esc(epochTitle)}">${icon('epoch')} <b>${esc(epochName(epoch))}</b></span>
       <span class="res stability ${level.combat !== 1 ? 'bad' : ''}" title="${esc(stabilityTitle)}">${icon('stability')} <b>${p.stability}</b> ${esc(level.name.toLowerCase())}</span>
       <span class="res" title="${esc(deterrenceTitle('Индекс сдерживания: насколько дорого на вас напасть. Боты нападают, если их армия сильнее.', deterrence))}">${icon('deterrence')} <b>${fmt(deterrence.total)}</b></span>
-      ${wars.length ? `<span class="wars">${icon('war')} Война: ${esc(wars.join(', '))}</span>` : ''}
+      ${wars.length ? `<span class="wars" title="Нажмите на державу — сводка войны">${icon('war')} Война: ${p.wars.map((w) => `<a class="war-link" data-war="${w}">${esc(state.powers[w].name)}</a>`).join(', ')}</span>` : ''}
       ${p.suzerain !== NONE ? `<span class="wars" title="Вассал платит дань, воюет на стороне сюзерена и не заключает союзов">Вассал державы ${esc(state.powers[p.suzerain].name)}</span>` : ''}
       ${state.coalitionLeader !== NONE ? `<span class="wars" title="Держава близка к победе: остальные собирают коалицию">${icon('warning')} Лидер: ${esc(state.powers[state.coalitionLeader].name)}</span>` : ''}
       ${p.secession ? `<span class="wars" title="Стабильность ниже ${pathsConfig.stability.secessionBelow}: самый недовольный город отделится">${icon('warning')} Мятежи: ${esc(findCity(state, p.secession.cityId)?.name ?? '')} через ${Math.max(0, p.secession.due - state.turn)} х.</span>` : ''}

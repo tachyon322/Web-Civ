@@ -109,7 +109,7 @@ export function flag(nationId: string): string {
   return `<svg class="flag" viewBox="0 0 30 20" width="21" height="14" aria-hidden="true">${body}</svg>`;
 }
 
-/** Флаг с цветной полоской державы под ним (по цвету державу узнают на карте). */
-export function flagFor(nationId: string, color: string): string {
-  return `<span class="flagbox" style="border-bottom-color:${color}">${flag(nationId)}</span>`;
+/** Флаг для списков и панелей. Цвет державы (он нужен на карте) здесь не рисуется — полоска под флагом смотрелась как дефект. */
+export function flagFor(nationId: string, _color?: string): string {
+  return `<span class="flagbox">${flag(nationId)}</span>`;
 }
