@@ -519,8 +519,7 @@ export function evaluateDeal(state: GameState, from: number, to: number, deal: D
       if (hasPact(state, to, e, 'trade')) add(b, `Торговый договор с державой ${name(e)}`, d.joinWarTradeWithEnemy);
       if (e === state.coalitionLeader) add(b, 'Против того, кто близок к победе', d.joinWarVsLeader);
       if (deal.gold) {
-        const v = Math.min(cfg.gift.max, incomeTurns(state, to, deal.gold) * cfg.gift.valuePerTurnOfIncome);
-        add(b, `Плата ${deal.gold} золота`, v);
+        add(b, `Плата ${deal.gold} золота`, incomeTurns(state, to, deal.gold) * cfg.gift.valuePerTurnOfIncome);
       }
       add(b, charLabel, traits.joinWar);
       break;
@@ -588,6 +587,64 @@ export function refusalText(state: GameState, from: number, to: number, score: B
     return `отношения ${i.value}${worst ? ` — ${worst.label.toLowerCase()} (${worst.value})` : ''}`;
   });
   return `Нет: ${parts.join('; ') || 'не видим выгоды'} (итог ${score.total})`;
+}
+
+export interface Shortfall {
+  text: string;
+  /** Сделка с подставленной суммой, которую согласятся принять. */
+  deal: Deal;
+}
+
+/** Наименьшее число шагов по 5 золота в [0, max], при котором сделка принимается; null — даже на максимуме нет. */
+function minGoldStep(max: number, ok: (gold: number) => boolean): number | null {
+  const top = Math.floor(max / 5);
+  if (!ok(top * 5)) return null;
+  let lo = 0;
+  let hi = top;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (ok(mid * 5)) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo * 5;
+}
+
+/**
+ * Чего не хватает до согласия: сколько золота добавить или на сколько снизить просьбу.
+ * null — сделка уже принимается или золотом её не исправить.
+ */
+export function shortfallHint(state: GameState, from: number, to: number, deal: Deal): Shortfall | null {
+  if (accepts(evaluateDeal(state, from, to, deal))) return null;
+  const pf = state.powers[from];
+  const pt = state.powers[to];
+  if (deal.kind === 'joinWar') {
+    const gold = minGoldStep(pf.gold, (g) => accepts(evaluateDeal(state, from, to, { ...deal, gold: g })));
+    if (gold === null || gold <= deal.gold) return null;
+    return { text: `Согласятся, если заплатить ${gold} золота (сейчас ${deal.gold})`, deal: { ...deal, gold } };
+  }
+  if (deal.kind !== 'peace') return null;
+  const t = deal.terms;
+  const give = minGoldStep(pf.gold, (g) => accepts(evaluateDeal(state, from, to, { kind: 'peace', terms: { ...t, giveGold: g } })));
+  if (give !== null && give > t.giveGold) {
+    return { text: `Согласятся, если вы отдадите ${give} золота (сейчас ${t.giveGold})`, deal: { kind: 'peace', terms: { ...t, giveGold: give } } };
+  }
+  if (t.takeGold > 0) {
+    // Просьба с их стороны тем легче, чем меньше сумма: ищем наибольшую приемлемую.
+    const okTake = (g: number) => accepts(evaluateDeal(state, from, to, { kind: 'peace', terms: { ...t, takeGold: g } }));
+    let lo = 0;
+    let hi = Math.floor(Math.min(t.takeGold, pt.gold) / 5) - 1;
+    let best: number | null = hi >= 0 && okTake(0) ? 0 : null;
+    while (best !== null && lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (okTake(mid * 5)) lo = mid;
+      else hi = mid - 1;
+      best = lo * 5;
+    }
+    if (best !== null) {
+      return { text: `Согласятся, если просить с них не больше ${best} золота (сейчас ${t.takeGold})`, deal: { kind: 'peace', terms: { ...t, takeGold: best } } };
+    }
+  }
+  return null;
 }
 
 /** Исполняет принятую сделку. */

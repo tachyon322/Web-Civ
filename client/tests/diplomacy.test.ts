@@ -5,6 +5,7 @@ import {
   accepts,
   dealBlocker,
   evaluateDeal,
+  shortfallHint,
   giftForecast,
   NO_TERMS,
   pendingProposals,
@@ -219,6 +220,26 @@ describe('мир и перемирие', () => {
     expect(total({ takeGold: 3000 })).toBeLessThan(total({ takeGold: 1000 }));
     expect(total({ giveGold: 1000 })).toBeGreaterThan(total({ giveGold: 300 }));
     expect(dealBlocker(s, 0, 1, { kind: 'peace', terms: { ...NO_TERMS, takeGold: 6000 } })).toBe('У них только 5000 золота');
+  });
+
+  it('подсказка: сколько золота не хватает до согласия', () => {
+    const s = atWarFor(2);
+    s.powers[0].gold = 3000;
+    s.powers[1].gold = 3000;
+    const peace: Deal = { kind: 'peace', terms: NO_TERMS };
+    expect(accepts(evaluateDeal(s, 0, 1, peace))).toBe(false);
+    const hint = shortfallHint(s, 0, 1, peace);
+    expect(hint).not.toBeNull();
+    expect(accepts(evaluateDeal(s, 0, 1, hint!.deal))).toBe(true);
+    if (hint!.deal.kind === 'peace' && hint!.deal.terms.giveGold >= 5) {
+      const less = { ...hint!.deal.terms, giveGold: hint!.deal.terms.giveGold - 5 };
+      expect(accepts(evaluateDeal(s, 0, 1, { kind: 'peace', terms: less }))).toBe(false);
+    }
+    expect(shortfallHint(atWarFor(15), 0, 1, peace)).toBeNull();
+    // слишком большая просьба: подсказка предлагает посильную сумму
+    const greedy: Deal = { kind: 'peace', terms: { ...NO_TERMS, takeGold: 3000 } };
+    const g = shortfallHint(atWarFor(15), 0, 1, greedy);
+    if (g) expect(g.deal.kind === 'peace' && g.deal.terms.takeGold < 3000).toBe(true);
   });
 
   it('в начале войны бот мира не хочет, со временем соглашается', () => {
