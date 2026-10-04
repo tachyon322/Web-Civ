@@ -1,9 +1,11 @@
-// Поиск пути A* со стоимостью местности, зона контроля и погрузка на воду.
+// Поиск пути A* со стоимостью местности, зона контроля, погрузка на воду и переброска по сети:
+// с клетки своей сети на любую клетку той же сети за transferCost (в пути это шаг на дальнюю клетку).
 
 import { balance } from './data';
 import { distance, neighbors } from './hex';
+import { computeNetwork } from './network';
 import { atWar, cityAt, isLand, mapSize, terrainMoveCost, unitAt } from './state';
-import type { GameState, Unit } from './types';
+import { NONE, type GameState, type Unit } from './types';
 
 /** Стоимость входа юнита в клетку или null, если войти нельзя. */
 export function enterCost(state: GameState, unit: Unit, tile: number): number | null {
@@ -14,6 +16,69 @@ export function enterCost(state: GameState, unit: Unit, tile: number): number | 
   const city = cityAt(state, tile);
   if (city && city.owner !== unit.owner) return null;
   return cost;
+}
+
+/** Занятость клеток для одного поиска: считается один раз вместо линейного поиска юнитов и городов на каждой клетке. */
+interface Occupancy {
+  /** Войти нельзя: чужой юнит или чужой город. */
+  blocked: Uint8Array;
+  /** Стоит другой юнит (остановиться нельзя). */
+  occupied: Uint8Array;
+}
+
+function occupancy(state: GameState, unit: Unit): Occupancy {
+  const n = state.map.terrain.length;
+  const blocked = new Uint8Array(n);
+  const occupied = new Uint8Array(n);
+  for (const u of state.units) {
+    if (u.id === unit.id) continue;
+    occupied[u.tile] = 1;
+    if (u.owner !== unit.owner) blocked[u.tile] = 1;
+  }
+  for (const c of state.cities) if (c.owner !== unit.owner) blocked[c.tile] = 1;
+  return { blocked, occupied };
+}
+
+function fastEnter(state: GameState, occ: Occupancy, tile: number): number | null {
+  return occ.blocked[tile] ? null : terrainMoveCost(state, tile);
+}
+
+function fastCanStop(state: GameState, occ: Occupancy, tile: number): boolean {
+  return !occ.occupied[tile] && fastEnter(state, occ, tile) !== null;
+}
+
+/** Сеть державы для переброски: метка компоненты каждой клетки и клетки каждой компоненты. */
+interface JumpNet {
+  label: Int32Array;
+  parts: number[][];
+}
+
+function jumpNet(state: GameState, power: number): JumpNet {
+  const label = computeNetwork(state, power);
+  const parts: number[][] = [];
+  for (let t = 0; t < label.length; t++) if (label[t] !== NONE) (parts[label[t]] ??= []).push(t);
+  return { label, parts };
+}
+
+/** Можно ли перебросить юнит с клетки from на клетку to по сети его державы. */
+export function canJump(state: GameState, unit: Unit, from: number, to: number): boolean {
+  if (from === to || enterCost(state, unit, to) === null) return false;
+  const label = computeNetwork(state, unit.owner);
+  return label[from] !== NONE && label[from] === label[to];
+}
+
+/** Стоимость шага пути: в соседнюю клетку — по местности (или переброской, если дешевле), в дальнюю — только переброской. */
+export function stepCost(state: GameState, unit: Unit, from: number, to: number): number | null {
+  const jumpCost = balance.units.transferCost;
+  if (distance(mapSize(state), from, to) > 1) return canJump(state, unit, from, to) ? jumpCost : null;
+  const walk = enterCost(state, unit, to);
+  if (walk === null || walk <= jumpCost) return walk;
+  return canJump(state, unit, from, to) ? jumpCost : walk;
+}
+
+/** Шаг пути — переброска по сети, а не обычный ход. */
+export function isJumpStep(state: GameState, from: number, to: number): boolean {
+  return distance(mapSize(state), from, to) > 1;
 }
 
 /** Зона контроля: рядом стоит вражеский юнит — движение в этой клетке заканчивается. */
@@ -112,25 +177,40 @@ export function findPath(state: GameState, unit: Unit, target: number): number[]
   const from = new Int32Array(n).fill(-1);
   const heap = new MinHeap();
   const zoc = enemyZocMap(state, unit);
+  const occ = occupancy(state, unit);
+  const net = jumpNet(state, unit.owner);
+  const jumpCost = balance.units.transferCost;
+  // Оценка остатка с учётом переброски: дойти пешком или прыгнуть в ближайшую к цели клетку сети.
+  let netToTarget = Infinity;
+  for (const part of net.parts) for (const t of part) netToTarget = Math.min(netToTarget, distance(size, t, target));
+  const h = (t: number) => Math.min(distance(size, t, target), jumpCost + netToTarget);
+  // Наименьшая стоимость, с которой уже раскрывали переброску из компоненты сети.
+  const jumpedAt = new Array<number>(net.parts.length).fill(Infinity);
+  const relax = (t: number, nb: number, base: number | null) => {
+    if (base === null) return;
+    let cost = base;
+    if (zoc[nb] && nb !== target) {
+      // В зоне контроля придётся остановиться — через занятую клетку там не пройти.
+      if (!fastCanStop(state, occ, nb)) return;
+      cost += ZOC_PATH_PENALTY;
+    }
+    const ng = g[t] + cost;
+    if (ng < g[nb]) {
+      g[nb] = ng;
+      from[nb] = t;
+      heap.push(ng + h(nb), nb, nb);
+    }
+  };
   g[unit.tile] = 0;
-  heap.push(distance(size, unit.tile, target), unit.tile, unit.tile);
+  heap.push(h(unit.tile), unit.tile, unit.tile);
   while (heap.size) {
     const t = heap.pop();
     if (t === target) break;
-    for (const nb of neighbors(size, t)) {
-      let cost = enterCost(state, unit, nb);
-      if (cost === null) continue;
-      if (zoc[nb] && nb !== target) {
-        // В зоне контроля придётся остановиться — через занятую клетку там не пройти.
-        if (!canStop(state, unit, nb)) continue;
-        cost += ZOC_PATH_PENALTY;
-      }
-      const ng = g[t] + cost;
-      if (ng < g[nb]) {
-        g[nb] = ng;
-        from[nb] = t;
-        heap.push(ng + distance(size, nb, target), nb, nb);
-      }
+    for (const nb of neighbors(size, t)) relax(t, nb, fastEnter(state, occ, nb));
+    const l = net.label[t];
+    if (l !== NONE && g[t] < jumpedAt[l]) {
+      jumpedAt[l] = g[t];
+      for (const m of net.parts[l]) if (m !== t && fastEnter(state, occ, m) !== null) relax(t, m, jumpCost);
     }
   }
   if (g[target] === Infinity) return null;
@@ -146,26 +226,38 @@ export function reachableTiles(state: GameState, unit: Unit): Map<number, number
   // Клетки, после входа в которые движение заканчивается: дальше из них не идём.
   const terminal = new Set<number>();
   const heap = new MinHeap();
+  const occ = occupancy(state, unit);
+  const zoc = enemyZocMap(state, unit);
+  const embarkEnds = balance.movement.embarkEndsMove;
+  const net = jumpNet(state, unit.owner);
+  const jumpCost = balance.units.transferCost;
+  const jumpedAt = new Array<number>(net.parts.length).fill(Infinity);
+  const relax = (t: number, nb: number, cost: number | null, g: number) => {
+    if (cost === null) return;
+    const ng = g + cost;
+    if (ng > unit.mp) return;
+    if (ng < (best.get(nb) ?? Infinity)) {
+      best.set(nb, ng);
+      // То же, что stepEndsMove, но по готовой карте зоны контроля.
+      if ((embarkEnds && isLand(state, t) !== isLand(state, nb)) || zoc[nb]) terminal.add(nb);
+      else terminal.delete(nb);
+      heap.push(ng, nb, nb);
+    }
+  };
   heap.push(0, unit.tile, unit.tile);
   while (heap.size) {
     const t = heap.pop();
     if (terminal.has(t)) continue;
     const g = best.get(t)!;
-    for (const nb of neighbors(size, t)) {
-      const cost = enterCost(state, unit, nb);
-      if (cost === null) continue;
-      const ng = g + cost;
-      if (ng > unit.mp) continue;
-      if (ng < (best.get(nb) ?? Infinity)) {
-        best.set(nb, ng);
-        if (stepEndsMove(state, unit, t, nb)) terminal.add(nb);
-        else terminal.delete(nb);
-        heap.push(ng, nb, nb);
-      }
+    for (const nb of neighbors(size, t)) relax(t, nb, fastEnter(state, occ, nb), g);
+    const l = net.label[t];
+    if (l !== NONE && g < jumpedAt[l]) {
+      jumpedAt[l] = g;
+      for (const m of net.parts[l]) if (m !== t && fastEnter(state, occ, m) !== null) relax(t, m, jumpCost, g);
     }
   }
   const result = new Map<number, number>();
-  for (const [t, c] of best) if (t !== unit.tile && canStop(state, unit, t)) result.set(t, c);
+  for (const [t, c] of best) if (t !== unit.tile && fastCanStop(state, occ, t)) result.set(t, c);
   return result;
 }
 
@@ -178,7 +270,7 @@ export function stepsThisTurn(state: GameState, unit: Unit, path: number[]): num
   let reach = 0;
   let from = unit.tile;
   for (let i = 0; i < path.length; i++) {
-    const cost = enterCost(state, unit, path[i]);
+    const cost = stepCost(state, unit, from, path[i]);
     if (cost === null || cost > mp) break;
     mp -= cost;
     reach = i + 1;

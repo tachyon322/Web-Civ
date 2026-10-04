@@ -107,7 +107,7 @@ describe('основание города', () => {
 });
 
 describe('доход, рост и ход', () => {
-  it('доход складывается из уровня города, зданий, особых клеток и содержания', () => {
+  it('доход складывается из уровня города, земли, зданий, особых клеток и содержания', () => {
     const s = blankState();
     const city = addCity(s, 0, 5, 5, true);
     s.map.special[at(s, 6, 5)] = S_GOLD;
@@ -115,8 +115,9 @@ describe('доход, рост и ход', () => {
     addCitizen(s, 0, 1, 1);
     const income = computeIncome(s, 0);
     const expected =
-      balance.city.goldByLevel[0] + 2 + balance.specials.gold.gold - balance.units.upkeepPerPerson;
+      balance.city.goldByLevel[0] + 7 * balance.city.goldPerLandTile + 2 + balance.specials.gold.gold - balance.units.upkeepPerPerson;
     expect(income.gold.total).toBe(expected);
+    expect(income.gold.items).toContainEqual({ label: 'Земля', value: 7 * balance.city.goldPerLandTile });
     expect(income.gold.items.map((i) => i.label)).toContain('Содержание юнитов');
     expect(income.science.total).toBe(balance.city.sciencePerCity + 2);
   });

@@ -51,6 +51,8 @@ describe('относительная ценность подарков', () => {
       c.level = 5;
       c.buildings = ['market'];
     }
+    // Без золота с земли — доходы ровно по уровню городов и рынкам.
+    s.territory.owner.fill(NONE);
     meetAll(s);
     expect(grossGold(s, 1)).toBe(10);
     expect(grossGold(s, 2)).toBe(100);

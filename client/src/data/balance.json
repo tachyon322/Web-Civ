@@ -30,6 +30,7 @@
     ],
     "sciencePerCity": 1,
     "growthPerLandTile": 1,
+    "goldPerLandTile": 1,
     "foundRadius": 1,
     "minDistanceBetweenCities": 3
   },

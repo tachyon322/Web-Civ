@@ -3,7 +3,7 @@
 // при изменении (подпись куска); куски за краем экрана отсекаются; кадр рисуется по требованию.
 
 import { Application, Container, Culler, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
-import { neighborInDirection, neighbors, type MapSize } from '../core/hex';
+import { distance, neighborInDirection, neighbors, type MapSize } from '../core/hex';
 import { buildingDef } from '../core/data';
 import { atWar, cityMaxDurability, hasBuildingEffect, unitMaxStrength } from '../core/state';
 import { epochOf } from '../core/epochs';
@@ -879,16 +879,23 @@ export class MapRenderer {
     }
     if (o.path && o.path.tiles.length) {
       let prev = tileCenter(this.size, o.path.from);
+      let prevTile = o.path.from;
       o.path.tiles.forEach((t, i) => {
         const cur = tileCenter(this.size, t);
         const now = i < o.path!.thisTurn;
-        top.moveTo(prev.x, prev.y).lineTo(cur.x, cur.y).stroke({
-          width: now ? 4 : 3,
-          color: now ? palette.path : palette.pathLater,
-          alpha: now ? 0.95 : 0.7,
-          cap: 'round',
-        });
+        const style = { width: now ? 4 : 3, color: now ? palette.path : palette.pathLater, alpha: now ? 0.95 : 0.7, cap: 'round' as const };
+        if (distance(this.size, prevTile, t) > 1) {
+          // Переброска по сети — дуга цвета сети.
+          const lift = Math.min(70, Math.hypot(cur.x - prev.x, cur.y - prev.y) * 0.3);
+          top
+            .moveTo(prev.x, prev.y)
+            .quadraticCurveTo((prev.x + cur.x) / 2, (prev.y + cur.y) / 2 - lift, cur.x, cur.y)
+            .stroke({ ...style, color: palette.network });
+        } else {
+          top.moveTo(prev.x, prev.y).lineTo(cur.x, cur.y).stroke(style);
+        }
         prev = cur;
+        prevTile = t;
       });
       const end = tileCenter(this.size, o.path.tiles[o.path.tiles.length - 1]);
       const done = o.path.thisTurn === o.path.tiles.length;

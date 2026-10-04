@@ -18,11 +18,9 @@ import {
 import { buildingPrice, citizenPrice, foundCityPrice, militaryPrice } from './economy';
 import { createCity, createUnit, log, removeUnit, spawnTile } from './entities';
 import { colOf, distance, inBounds, rowOf } from './hex';
-import { computeNetwork } from './network';
 import { enterCost, findPath } from './pathfinding';
 import { moveTowards } from './movement';
 import {
-  cityAt,
   findCity,
   findUnit,
   hasBuildingEffect,
@@ -43,7 +41,6 @@ import { buyProjectStage, checkVictory, projectBlocker } from './victory';
 export type Command =
   | { type: 'Move'; power: number; unitId: number; target: number }
   | { type: 'CancelRoute'; power: number; unitId: number }
-  | { type: 'Transfer'; power: number; unitId: number; cityId: number }
   | { type: 'FoundCity'; power: number; unitId: number }
   | { type: 'BuyCitizen'; power: number; cityId: number }
   | { type: 'BuyBuilding'; power: number; cityId: number; buildingId: string }
@@ -99,22 +96,6 @@ export function validate(state: GameState, cmd: Command): Validation {
       return typeof unit === 'string' ? fail(unit) : OK;
     }
 
-    case 'Transfer': {
-      const unit = ownUnit(state, cmd.power, cmd.unitId);
-      if (typeof unit === 'string') return fail(unit);
-      const from = cityAt(state, unit.tile);
-      if (!from || from.owner !== cmd.power) return fail('Переброска возможна только из своего города');
-      const to = findCity(state, cmd.cityId);
-      if (!to || to.owner !== cmd.power) return fail('Переброска возможна только в свой город');
-      if (to.id === from.id) return fail('Юнит уже в этом городе');
-      if (unit.mp < balance.units.transferCost) return fail('Не хватает очков хода');
-      const label = computeNetwork(state, cmd.power);
-      if (label[from.tile] === NONE || label[from.tile] !== label[to.tile]) {
-        return fail('Города не связаны сетью территории');
-      }
-      if (unitAt(state, to.tile)) return fail('В городе назначения уже стоит юнит');
-      return OK;
-    }
 
     case 'FoundCity': {
       const unit = ownUnit(state, cmd.power, cmd.unitId);
@@ -263,14 +244,6 @@ export function apply(state: GameState, cmd: Command): void {
       break;
     }
 
-    case 'Transfer': {
-      const unit = findUnit(state, cmd.unitId)!;
-      const to = findCity(state, cmd.cityId)!;
-      unit.tile = to.tile;
-      unit.mp -= balance.units.transferCost;
-      unit.routeTarget = NONE;
-      break;
-    }
 
     case 'FoundCity': {
       const unit = findUnit(state, cmd.unitId)!;
@@ -373,7 +346,7 @@ export function apply(state: GameState, cmd: Command): void {
   }
   updateContacts(state, cmd.power);
   // Стабильность зависит от городов, зданий, войн и способностей — пересчёт после каждой команды.
-  if (cmd.type === 'Move' || cmd.type === 'Transfer' || cmd.type === 'CancelRoute' || cmd.type === 'Merge') refreshStability(state, cmd.power);
+  if (cmd.type === 'Move' || cmd.type === 'CancelRoute' || cmd.type === 'Merge') refreshStability(state, cmd.power);
   else refreshAllStability(state);
   checkVictory(state);
 }

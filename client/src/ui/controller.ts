@@ -67,6 +67,8 @@ import {
   unitMaxStrength,
   unitPeople,
   validate,
+  isJumpStep,
+  isLand,
   type BuildingDef,
   type Breakdown,
   type CaptureChoice,
@@ -94,7 +96,6 @@ type Intent =
   | { kind: 'attack'; tile: number; blocker: string | null }
   | { kind: 'capture'; city: City; blocker: string | null }
   | { kind: 'merge'; target: Unit }
-  | { kind: 'transfer'; city: City }
   | { kind: 'move' };
 
 export interface UiElements {
@@ -154,6 +155,8 @@ export class GameController {
   private state!: GameState;
   private selection: Selection = null;
   private hover = NONE;
+  /** Путь выбранного юнита к клетке под курсором (для прогноза). */
+  private hoverPath: number[] | null = null;
   private visible: Uint8Array = new Uint8Array(0);
   private toastTimer = 0;
   /** Идёт ход ботов: ввод игрока не принимается. */
@@ -378,9 +381,6 @@ export class GameController {
       case 'merge':
         this.openMergeDialog(unit, intent.target);
         return;
-      case 'transfer':
-        this.dispatch({ type: 'Transfer', power: this.power, unitId: unit.id, cityId: intent.city.id });
-        return;
       case 'move':
         this.dispatch({ type: 'Move', power: this.power, unitId: unit.id, target: tile });
     }
@@ -567,22 +567,27 @@ export class GameController {
     ) {
       return { kind: 'merge', target: other };
     }
-    if (city && city.owner === this.power && this.transferTargets(unit).includes(tile)) return { kind: 'transfer', city };
     return { kind: 'move' };
   }
 
-  /** Города сети, куда юнит может перебраться из своего города прямо сейчас. */
-  private transferTargets(unit: Unit): number[] {
+  /** Есть ли в пути к клетке под курсором переброска по сети. */
+  private overlayJumps(unit: Unit, tile: number): boolean {
+    const path = this.hoverPath;
+    if (!path || path[path.length - 1] !== tile) return false;
+    let from = unit.tile;
+    for (const t of path) {
+      if (isJumpStep(this.state, from, t)) return true;
+      from = t;
+    }
+    return false;
+  }
+
+  /** Свои города той же сети, что и клетка (кроме города на ней самой). */
+  private networkCityTiles(tile: number): number[] {
     const state = this.state;
-    const from = cityAt(state, unit.tile);
-    if (!from || from.owner !== this.power) return [];
-    // Сеть считается один раз; validate проверяет остальные условия.
     const label = computeNetwork(state, this.power);
-    if (label[from.tile] === NONE) return [];
-    return state.cities
-      .filter((c) => c.owner === this.power && c.id !== from.id && label[c.tile] === label[from.tile])
-      .filter((c) => validate(state, { type: 'Transfer', power: this.power, unitId: unit.id, cityId: c.id }).ok)
-      .map((c) => c.tile);
+    if (label[tile] === NONE) return [];
+    return state.cities.filter((c) => c.owner === this.power && c.tile !== tile && label[c.tile] === label[tile]).map((c) => c.tile);
   }
 
   private updateOverlay(): void {
@@ -593,7 +598,7 @@ export class GameController {
     if (unit) {
       overlay.selectedTile = unit.tile;
       overlay.reachable = reachableTiles(state, unit).keys();
-      overlay.networkTiles = this.transferTargets(unit);
+      overlay.networkTiles = this.networkCityTiles(unit.tile);
       const range = unitDef(unit.type).range;
       for (const other of state.units) {
         if (other.owner === this.power) {
@@ -609,20 +614,17 @@ export class GameController {
         else if (!attackBlocker(state, unit, city.tile)) overlay.attackTiles.push(city.tile);
       }
       const h = this.hover;
+      this.hoverPath = null;
       if (h >= 0 && h !== unit.tile && this.intentFor(unit, h).kind === 'move') {
         const path = findPath(state, unit, h);
+        this.hoverPath = path;
         if (path) overlay.path = { from: unit.tile, tiles: path, thisTurn: stepsThisTurn(state, unit, path) };
       }
     } else if (sel?.kind === 'city') {
       const city = findCity(state, sel.id);
       if (city) {
         overlay.selectedTile = city.tile;
-        if (city.owner === this.power) {
-          const label = computeNetwork(state, this.power);
-          overlay.networkTiles = state.cities
-            .filter((c) => c.owner === this.power && c.id !== city.id && label[c.tile] !== NONE && label[c.tile] === label[city.tile])
-            .map((c) => c.tile);
-        }
+        if (city.owner === this.power) overlay.networkTiles = this.networkCityTiles(city.tile);
       }
     } else if (sel?.kind === 'unit') {
       const other = findUnit(state, sel.id);
@@ -655,9 +657,9 @@ export class GameController {
       const level = unit.level + 1;
       el.innerHTML = `<div class="title">${icon('merge')} Слияние — ПКМ</div>
         <div class="mods">${esc(unitTitle(this.state, unit))} + ${esc(unitTitle(this.state, intent.target))} → ${level} ур., сила ${fmt(unit.strength + intent.target.strength)} из ${2 ** (level - 1)}</div>`;
-    } else if (intent.kind === 'transfer') {
-      el.innerHTML = `<div class="title">${icon('transfer')} Переброска в ${esc(intent.city.name)} — ПКМ</div>
-        <div class="mods">по сети городов за ${balance.units.transferCost} очко хода</div>`;
+    } else if (this.overlayJumps(unit, h)) {
+      el.innerHTML = `<div class="title">${icon('transfer')} Переброска по сети — ПКМ</div>
+        <div class="mods">с любой клетки сети на любую за ${balance.units.transferCost} очко хода</div>`;
     } else {
       el.innerHTML = '';
     }
@@ -819,7 +821,9 @@ export class GameController {
     if (unit.type === 'citizen') html += ` Проходя нейтральную клетку у границы, житель размечает её для ближайшего города со свободным лимитом.`;
     if (unit.level < balance.units.maxLevel) html += ` Фиолетовая рамка — слияние с соседом того же уровня.`;
     if (unitDef(unit.type).military || unit.type === 'citizen') html += ` Красная — цель атаки, оранжевая — город можно захватить.`;
-    if (this.transferTargets(unit).length) html += ` Голубая — переброска по сети за ${balance.units.transferCost} очко хода.`;
+    if (this.networkCityTiles(unit.tile).length) {
+      html += ` Голубая — города сети: со своей земли юнит за ${balance.units.transferCost} очко хода переносится на любую клетку сети, путь учитывает это сам.`;
+    }
     html += `</div>`;
     return html;
   }
@@ -833,6 +837,7 @@ export class GameController {
       result.culture += y.culture ?? 0;
     }
     for (const t of cityTiles(this.state, city.id)) {
+      if (isLand(this.state, t)) result.gold += balance.city.goldPerLandTile;
       const sp = SPECIALS[this.state.map.special[t]];
       if (!sp) continue;
       const y = specialYields[sp];

@@ -36,7 +36,7 @@ function emptyIncome(): Income {
 
 const RESOURCES = ['gold', 'science', 'culture'] as const;
 
-/** Производство: города, работающие здания, особые клетки, сложность (у ботов) и стабильность. */
+/** Производство: города, земля, работающие здания, особые клетки, сложность (у ботов) и стабильность. */
 function production(state: GameState, power: number): Income {
   const income = emptyIncome();
   const cities = citiesOf(state, power);
@@ -49,6 +49,9 @@ function production(state: GameState, power: number): Income {
     }
   }
   const { owner } = state.territory;
+  let land = 0;
+  for (let t = 0; t < owner.length; t++) if (owner[t] === power && isLand(state, t)) land++;
+  add(income.gold, 'Земля', land * balance.city.goldPerLandTile);
   const specialNames: Record<string, string> = { gold: 'Золотые жилы', marble: 'Мрамор', ruins: 'Древние руины' };
   for (let t = 0; t < owner.length; t++) {
     if (owner[t] !== power) continue;

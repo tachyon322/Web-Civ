@@ -1,8 +1,8 @@
-// Движение юнита по пути. Житель размечает землю по дороге.
+// Движение юнита по пути (шаг на дальнюю клетку — переброска по сети). Житель размечает землю по дороге.
 
 import { balance } from './data';
 import { range } from './hex';
-import { enterCost, findPath, stepEndsMove, stepsThisTurn } from './pathfinding';
+import { findPath, stepCost, stepEndsMove, stepsThisTurn } from './pathfinding';
 import { atWar, isLand, mapSize } from './state';
 import { tryClaim } from './territory';
 import { NONE, type GameState, type Unit } from './types';
@@ -35,7 +35,7 @@ export function moveAlong(state: GameState, unit: Unit, path: number[]): MoveRes
   for (let i = 0; i < steps; i++) {
     const from = unit.tile;
     const t = path[i];
-    unit.mp -= enterCost(state, unit, t)!;
+    unit.mp -= stepCost(state, unit, from, t)!;
     unit.tile = t;
     unit.moved = true;
     unit.fortified = false;
