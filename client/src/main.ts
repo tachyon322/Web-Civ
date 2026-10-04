@@ -41,10 +41,15 @@ async function main(): Promise<void> {
   installAudioUnlock();
   applySound(settings);
   startMusic();
-  document.addEventListener('click', (e) => {
-    const button = (e.target as HTMLElement).closest('button');
-    if (button && !button.disabled) playCue('click');
-  });
+  // Перехват: щелчок назначается раньше обработчика кнопки, и её собственный звук (покупка, атака) его отменяет.
+  document.addEventListener(
+    'click',
+    (e) => {
+      const button = (e.target as HTMLElement).closest('button');
+      if (button && !button.disabled) playCue('click');
+    },
+    true,
+  );
   const renderer = await MapRenderer.create(el('map'));
   renderer.setSimpleGraphics(settings.simpleGraphics);
   const minimap = new Minimap(el<HTMLCanvasElement>('minimap'), renderer);

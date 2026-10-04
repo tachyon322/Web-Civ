@@ -102,6 +102,7 @@ import { emptyOverlay, type MapRenderer, type Overlay } from '../render/MapRende
 import type { Minimap } from '../render/minimap';
 import { esc, showChoice } from './dialog';
 import { escIcons, icon } from './icons';
+import { spentCue, type Purse } from './sounds';
 import type { Cue } from '../audio/sfx';
 import { PathsWindow } from './paths';
 import { DiplomacyWindow, statusText } from './diplomacy';
@@ -178,6 +179,8 @@ function buildingSummary(b: BuildingDef, purchase = false): string {
   if (b.wonder) parts.unshift('чудо света');
   return parts.join(', ');
 }
+
+const purse = (p: Purse): Purse => ({ gold: p.gold, science: p.science, culture: p.culture });
 
 export class GameController {
   private state!: GameState;
@@ -314,6 +317,7 @@ export class GameController {
       wars: state.powers[this.power].wars.length,
       unitTile: unit?.tile ?? NONE,
       unitMp: unit?.mp ?? 0,
+      purse: purse(state.powers[this.power]),
     };
   }
 
@@ -342,23 +346,25 @@ export class GameController {
         return this.sound('capture');
       case 'FoundCity':
         return this.sound('found');
+      // Покупки звучат валютой, которой за них заплатили: золото, наука или культура.
       case 'BuyCitizen':
       case 'BuyMilitary':
       case 'BuySpecialist':
+      case 'BuyProjectStage':
       case 'Gift':
-        return this.sound('coins');
+        return this.sound(spentCue(before.purse, purse(p)) ?? 'coins');
       case 'BuyImprovement':
         return this.sound('build');
       case 'BuyBuilding':
-        return this.sound(buildingDef(cmd.buildingId).wonder ? 'wonder' : 'build');
-      case 'BuyProjectStage':
-        return this.sound('wonder');
+        if (buildingDef(cmd.buildingId).wonder) return this.sound('wonder');
+        return this.sound(spentCue(before.purse, purse(p)) ?? 'build');
       case 'Merge':
         return this.sound('merge');
       case 'DeclareWar':
         return this.sound('war');
       case 'UseAbility':
-        return this.sound('ability');
+        if (cmd.ability === 'sabotage') return this.sound('sabotage');
+        return this.sound(spentCue(before.purse, purse(p)) ?? 'ability');
       case 'CultureExchange':
       case 'Propose':
       case 'Respond':

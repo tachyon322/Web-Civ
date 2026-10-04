@@ -1,7 +1,16 @@
-// Звуковые эффекты, синтезированные Web Audio: без файлов, весят ноль байт.
-// Каждый эффект — короткая сборка из тонов, шума и огибающих.
+// Звуковые эффекты. Большинство синтезируется Web Audio на лету (сборка из тонов, шума и огибающих);
+// щелчок, атака, покупки за золото, науку и культуру и саботаж — записанные заранее сэмплы
+// (src/audio/samples, генератор tools/sfx.py). Пока сэмпл грузится, звучит синтез.
 
-import { getMix, type Mix } from './engine';
+import { getMix, onAudioReady, type Mix } from './engine';
+import attack1Url from './samples/attack-1.mp3';
+import attack2Url from './samples/attack-2.mp3';
+import attack3Url from './samples/attack-3.mp3';
+import clickUrl from './samples/click.mp3';
+import cultureUrl from './samples/culture.mp3';
+import goldUrl from './samples/gold.mp3';
+import sabotageUrl from './samples/sabotage.mp3';
+import scienceUrl from './samples/science.mp3';
 
 export type Cue =
   | 'click'
@@ -11,6 +20,9 @@ export type Cue =
   | 'jump'
   | 'claim'
   | 'coins'
+  | 'science'
+  | 'culture'
+  | 'sabotage'
   | 'build'
   | 'found'
   | 'melee'
@@ -194,6 +206,17 @@ const CUES: Record<Cue, (m: Mix) => void> = {
   coins: (m) => {
     [2100, 2500, 2300, 2700].forEach((p, i) => coin(m, i * 0.06, p, 0.07));
   },
+  science: (m) => {
+    [84, 88, 91, 96].forEach((n, i) => bell(m, n, i * 0.07, 0.04, 1.2));
+  },
+  culture: (m) => {
+    [62, 66, 69, 74, 78].forEach((n, i) => pluck(m, n, i * 0.045, 0.09, 1.2));
+  },
+  sabotage: (m) => {
+    noise(m, { decay: 0.4, gain: 0.08, filter: 'highpass', freq: 4000 });
+    drum(m, 0.42, 0.5, 60);
+    noise(m, { at: 0.42, decay: 0.8, gain: 0.3, filter: 'lowpass', freq: 400, to: 80 });
+  },
   build: (m) => {
     // Стук молотка по дереву и монеты.
     for (const at of [0, 0.18, 0.36]) noise(m, { at, decay: 0.05, gain: 0.25, filter: 'bandpass', freq: 900, q: 2 });
@@ -308,16 +331,67 @@ const CUES: Record<Cue, (m: Mix) => void> = {
   },
 };
 
+/** Сэмплы эффектов: несколько вариантов — выбирается случайный; громкость относительно синтеза. */
+const SAMPLES: Partial<Record<Cue, { urls: string[]; gain: number }>> = {
+  click: { urls: [clickUrl], gain: 0.25 },
+  melee: { urls: [attack1Url, attack2Url, attack3Url], gain: 0.45 },
+  coins: { urls: [goldUrl], gain: 0.35 },
+  science: { urls: [scienceUrl], gain: 0.3 },
+  culture: { urls: [cultureUrl], gain: 0.35 },
+  sabotage: { urls: [sabotageUrl], gain: 0.45 },
+};
+const buffers = new Map<string, AudioBuffer>();
+
+onAudioReady((m) => {
+  const urls = new Set(Object.values(SAMPLES).flatMap((s) => s.urls));
+  for (const url of urls) {
+    fetch(url)
+      .then((r) => r.arrayBuffer())
+      .then((data) => m.ctx.decodeAudioData(data))
+      .then((buffer) => buffers.set(url, buffer))
+      .catch((err: unknown) => console.warn('Звук не загрузился', url, err));
+  }
+});
+
+/** Сыграть сэмпл; false — его нет или он ещё не загружен. */
+function playSample(m: Mix, cue: Cue): boolean {
+  const sample = SAMPLES[cue];
+  const buffer = sample && buffers.get(sample.urls[Math.floor(Math.random() * sample.urls.length)]);
+  if (!sample || !buffer) return false;
+  const src = m.ctx.createBufferSource();
+  src.buffer = buffer;
+  // Небольшой разброс высоты, чтобы частые звуки не звучали одинаково.
+  if (cue !== 'click') src.playbackRate.value = 1 + (Math.random() - 0.5) * 0.06;
+  const gain = m.ctx.createGain();
+  gain.gain.value = sample.gain;
+  src.connect(gain).connect(m.sfx);
+  src.start();
+  return true;
+}
+
 /** Не повторять один эффект чаще этого (мс): серия команд бота не превращается в треск. */
 const MIN_GAP: Partial<Record<Cue, number>> = { click: 40, select: 60, step: 150, hooves: 200, coins: 120 };
 const lastPlayed = new Map<Cue, number>();
+let pendingClick = 0;
 
 export function playCue(cue: Cue): void {
+  // Щелчок кнопки ждёт конца обработки нажатия: если кнопка вызвала свой звук (покупка, атака),
+  // щелчок на него не накладывается.
+  if (cue === 'click') {
+    window.clearTimeout(pendingClick);
+    pendingClick = window.setTimeout(() => play('click'), 0);
+    return;
+  }
+  window.clearTimeout(pendingClick);
+  play(cue);
+}
+
+function play(cue: Cue): void {
   const m = getMix();
   if (!m) return;
   const now = performance.now();
   const gap = MIN_GAP[cue] ?? 80;
   if (now - (lastPlayed.get(cue) ?? -Infinity) < gap) return;
   lastPlayed.set(cue, now);
-  CUES[cue](m);
+  if (!playSample(m, cue)) CUES[cue](m);
 }
