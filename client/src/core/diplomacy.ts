@@ -547,10 +547,11 @@ export function evaluateDeal(state: GameState, from: number, to: number, deal: D
       add(b, 'Отношения', op * d.peaceOpinionShare);
       if (from === state.coalitionLeader) add(b, 'Нельзя дать им победить', d.peaceVsLeader);
       if (t.giveGold) {
-        add(b, `Получаем ${t.giveGold} золота`, Math.min(d.peaceGoldMax, incomeTurns(state, to, t.giveGold) * d.peaceGoldPerTurnOfIncome));
+        add(b, `Получаем ${t.giveGold} золота`, incomeTurns(state, to, t.giveGold) * d.peaceGoldPerTurnOfIncome);
       }
       if (t.takeGold) {
-        add(b, `Платим ${t.takeGold} золота`, -Math.min(2 * d.peaceGoldMax, incomeTurns(state, to, t.takeGold) * d.peaceGoldPerTurnOfIncome));
+        const share = Math.min(1, t.takeGold / Math.max(1, pt.gold));
+        add(b, `Платим ${t.takeGold} золота`, -(incomeTurns(state, to, t.takeGold) * d.peaceGoldPerTurnOfIncome + share * d.peaceTreasuryShare));
       }
       const give = t.giveCity !== NONE ? findCity(state, t.giveCity) : undefined;
       if (give) add(b, `Получаем город ${give.name}`, give.level * d.peaceCityGetPerLevel);

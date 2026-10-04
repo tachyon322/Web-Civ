@@ -109,7 +109,7 @@
     "peaceOpinionShare": 0.25,
     "peaceVsLeader": -25,
     "peaceGoldPerTurnOfIncome": 5,
-    "peaceGoldMax": 30,
+    "peaceTreasuryShare": 30,
     "peaceCityGetPerLevel": 6,
     "peaceCityGivePerLevel": -10,
     "peaceBecomeVassal": -50,

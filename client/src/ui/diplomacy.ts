@@ -85,6 +85,7 @@ export class DiplomacyWindow {
   private target = NONE;
   private peace: PeaceTerms = { ...NO_TERMS };
   private joinGold = 0;
+  private giftGold = 50;
   /** Команды кнопок текущей отрисовки: data-i — индекс. */
   private actions: { cmd: Command; confirm?: () => void }[] = [];
   private onKey = (e: KeyboardEvent) => {
@@ -176,12 +177,19 @@ export class DiplomacyWindow {
   }
 
   private onChange(e: Event): void {
-    const sel = e.target as HTMLSelectElement;
-    const field = sel.dataset.field;
+    const el = e.target as HTMLInputElement | HTMLSelectElement;
+    const field = el.dataset.field;
     if (!field) return;
-    const v = Number(sel.value);
-    if (field === 'joinGold') this.joinGold = v;
-    else (this.peace as unknown as Record<string, number>)[field] = v;
+    const { power } = this.host;
+    if (field === 'vassalMe' || field === 'vassalThem') {
+      const on = (el as HTMLInputElement).checked;
+      this.peace.vassal = on ? (field === 'vassalMe' ? power : this.target) : NONE;
+    } else {
+      const v = Math.max(0, Math.floor(Number(el.value)) || 0);
+      if (field === 'joinGold') this.joinGold = v;
+      else if (field === 'giftGold') this.giftGold = v;
+      else (this.peace as unknown as Record<string, number>)[field] = v;
+    }
     this.render();
   }
 
@@ -336,6 +344,7 @@ export class DiplomacyWindow {
     return `<h3>Подарки</h3>
       <div class="muted small">Ценность — в ходах дохода получателя; повторный подарок за ${diplomacyConfig.gift.repeatWindow} ходов вдвое слабее, максимум +${diplomacyConfig.gift.max}.</div>
       <div class="actions row-buttons">${gold.map((g) => giftBtn(g, 'gold')).join('')}</div>
+      <div class="custom-gift"><label class="small">Своя сумма (у вас ${me.gold}) <input type="number" min="0" max="${me.gold}" step="5" value="${this.giftGold}" data-field="giftGold"></label>${this.giftGold > 0 ? giftBtn(this.giftGold, 'gold') : ''}</div>
       <div class="muted small">Культурный обмен (тратит культуру):</div>
       <div class="actions row-buttons">${culture.map((c) => giftBtn(c, 'culture')).join('')}</div>`;
   }
@@ -372,12 +381,9 @@ export class DiplomacyWindow {
     const enemies = state.powers[power].wars.filter((e) => e !== this.target);
     if (!enemies.length) return '';
     const me = state.powers[power];
-    const amounts = [0, 25, 50, 100, 200].filter((g) => g <= me.gold);
-    if (!amounts.includes(this.joinGold)) this.joinGold = 0;
+    this.joinGold = Math.min(this.joinGold, me.gold);
     let html = `<h3>Помощь в войне</h3>
-      <label class="small">Плата: <select data-field="joinGold">${amounts
-        .map((g) => `<option value="${g}" ${g === this.joinGold ? 'selected' : ''}>${g ? `${g} золота` : 'без платы'}</option>`)
-        .join('')}</select></label>`;
+      <label class="small">Ваша плата золотом (у вас ${me.gold}) <input type="number" min="0" max="${me.gold}" step="5" value="${this.joinGold}" data-field="joinGold"></label>`;
     for (const e of enemies) {
       html += this.dealRow(`Вступить в войну против: ${state.powers[e].name}`, { kind: 'joinWar', enemy: e, gold: this.joinGold });
     }
@@ -398,11 +404,6 @@ export class DiplomacyWindow {
     const t = this.target;
     const me = state.powers[power];
     const pt = state.powers[t];
-    const goldOptions = (max: number, value: number) =>
-      [0, 25, 50, 100, 200, 400]
-        .filter((g) => g === 0 || g <= max)
-        .map((g) => `<option value="${g}" ${g === value ? 'selected' : ''}>${g ? `${g} золота` : 'нет'}</option>`)
-        .join('');
     const cityOptions = (owner: number, value: number) =>
       [`<option value="${NONE}">нет</option>`]
         .concat(
@@ -412,21 +413,46 @@ export class DiplomacyWindow {
         )
         .join('');
     const p = this.peace;
-    const vassal = `<option value="${NONE}">нет</option>
-      <option value="${t}" ${p.vassal === t ? 'selected' : ''}>${esc(pt.name)} — ваш вассал</option>
-      <option value="${power}" ${p.vassal === power ? 'selected' : ''}>вы — вассал державы ${esc(pt.name)}</option>`;
+    p.giveGold = Math.min(p.giveGold, me.gold);
+    p.takeGold = Math.min(p.takeGold, pt.gold);
+    const gold = (field: string, value: number, max: number) =>
+      `<label>Золото (максимум ${max})<input type="number" min="0" max="${max}" step="5" value="${value}" data-field="${field}"></label>`;
     const deal: Deal = { kind: 'peace', terms: { ...p } };
     const f = this.forecast(deal);
     return `<h3>Мир</h3>
-      <div class="muted small">После мира — перемирие на ${diplomacyConfig.truceTurns} ходов. Столицу по договору не отдают.</div>
+      <div class="muted small">Соберите условия: слева то, что вы отдаёте, справа то, что получаете. Пустые колонки — мир без условий. После мира перемирие на ${diplomacyConfig.truceTurns} ходов, столицу по договору не отдают.</div>
       <div class="terms">
-        <label>Вы платите<select data-field="giveGold">${goldOptions(me.gold, p.giveGold)}</select></label>
-        <label>Они платят<select data-field="takeGold">${goldOptions(pt.gold, p.takeGold)}</select></label>
-        <label>Вы отдаёте город<select data-field="giveCity">${cityOptions(power, p.giveCity)}</select></label>
-        <label>Они отдают город<select data-field="takeCity">${cityOptions(t, p.takeCity)}</select></label>
-        <label class="wide">Вассалитет<select data-field="vassal">${vassal}</select></label>
+        <div class="col-title">Вы отдаёте</div>
+        <div class="col-title">Вы получаете</div>
+        <div class="col">
+          ${gold('giveGold', p.giveGold, me.gold)}
+          <label>Город<select data-field="giveCity">${cityOptions(power, p.giveCity)}</select></label>
+          <label class="check"><input type="checkbox" data-field="vassalMe" ${p.vassal === power ? 'checked' : ''}> Стать их вассалом</label>
+        </div>
+        <div class="col">
+          ${gold('takeGold', p.takeGold, pt.gold)}
+          <label>Город<select data-field="takeCity">${cityOptions(t, p.takeCity)}</select></label>
+          <label class="check"><input type="checkbox" data-field="vassalThem" ${p.vassal === t ? 'checked' : ''}> Сделать их своим вассалом</label>
+        </div>
       </div>
+      <div class="terms-summary"><b>Итог:</b> ${esc(this.summary(p))}</div>
       <div class="deal">${this.button('Предложить мир', { type: 'Propose', power, target: t, deal }, { blocker: f.ok ? null : 'Откажут' })}${f.html}</div>`;
+  }
+
+  /** Условия мира словами с точки зрения игрока. */
+  private summary(p: PeaceTerms): string {
+    const { state, power } = this.host;
+    const t = this.target;
+    const city = (id: number) => state.cities.find((c) => c.id === id)?.name ?? '?';
+    const give: string[] = [];
+    const get: string[] = [];
+    if (p.giveGold) give.push(`${p.giveGold} золота`);
+    if (p.giveCity !== NONE) give.push(`город ${city(p.giveCity)}`);
+    if (p.vassal === power) give.push('вассалитет');
+    if (p.takeGold) get.push(`${p.takeGold} золота`);
+    if (p.takeCity !== NONE) get.push(`город ${city(p.takeCity)}`);
+    if (p.vassal === t) get.push('вассалитет (они — ваши вассалы)');
+    return `вы отдаёте: ${give.join(', ') || 'ничего'}; вы получаете: ${get.join(', ') || 'ничего'}; война заканчивается.`;
   }
 
   private confirmWar(target: number): void {

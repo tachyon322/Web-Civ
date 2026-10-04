@@ -210,6 +210,17 @@ describe('мир и перемирие', () => {
     return s;
   }
 
+  it('золото в мире без потолка: чем больше сумма, тем дороже', () => {
+    const s = atWarFor(15);
+    s.powers[1].gold = 5000;
+    s.powers[0].gold = 5000;
+    const total = (terms: Partial<typeof NO_TERMS>) => evaluateDeal(s, 0, 1, { kind: 'peace', terms: { ...NO_TERMS, ...terms } }).total;
+    expect(total({ takeGold: 1000 })).toBeLessThan(total({ takeGold: 300 }));
+    expect(total({ takeGold: 3000 })).toBeLessThan(total({ takeGold: 1000 }));
+    expect(total({ giveGold: 1000 })).toBeGreaterThan(total({ giveGold: 300 }));
+    expect(dealBlocker(s, 0, 1, { kind: 'peace', terms: { ...NO_TERMS, takeGold: 6000 } })).toBe('У них только 5000 золота');
+  });
+
   it('в начале войны бот мира не хочет, со временем соглашается', () => {
     const s = atWarFor(1);
     const peace: Deal = { kind: 'peace', terms: NO_TERMS };
