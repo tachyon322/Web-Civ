@@ -5,7 +5,7 @@ import { balance, buildingDef, buildings, diplomacyConfig, pathsConfig, specialY
 import { nationTrait } from './nations';
 import { borderTiles } from './relations';
 import { stabilityLevel } from './stability';
-import { citiesOf, isLand, unitPeople, unitsOf, vassalsOf } from './state';
+import { citiesOf, isLand, peopleAtLevel, unitPeople, unitsOf, vassalsOf } from './state';
 import { SPECIALS, type City, type GameState } from './types';
 
 export type ResourceId = 'gold' | 'science' | 'culture';
@@ -158,9 +158,9 @@ export function citizenPrice(_state: GameState, _power: number): number {
   return balance.prices.citizen;
 }
 
-/** Военный юнит из казарм стоит как несколько жителей. */
-export function militaryPrice(state: GameState, power: number): number {
-  return citizenPrice(state, power) * balance.units.barracksPriceInCitizens;
+/** Военный юнит из казарм или академии стоит как столько жителей, сколько в нём людей. */
+export function militaryPrice(state: GameState, power: number, level: number): number {
+  return citizenPrice(state, power) * peopleAtLevel(level) * balance.units.militaryPricePerPerson;
 }
 
 /** Цена основания растёт с каждым городом державы. */

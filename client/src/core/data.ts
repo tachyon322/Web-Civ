@@ -12,6 +12,7 @@ import traitsJson from '../data/traits.json';
 import type { Character, MemoryKind, SpecialId, TerrainId, UnitType } from './types';
 
 export type Yields = Partial<Record<'gold' | 'science' | 'culture', number>>;
+export type Currency = 'gold' | 'science' | 'culture';
 
 export interface BuildingDef {
   id: string;
@@ -19,8 +20,12 @@ export interface BuildingDef {
   basePrice: number;
   priceStep: number;
   yields: Yields;
-  /** Особый эффект: казармы, стены. */
+  /** Особый эффект: казармы (и академия), стены (и их улучшения). */
   effect?: 'barracks' | 'walls';
+  /** Уровень военного юнита, которого можно купить в городе (казармы, академия). */
+  unitLevel?: number;
+  /** Чем платить (по умолчанию золото): улучшения научной линии — наукой, культурной и чудеса — культурой. */
+  currency?: Currency;
   /** Прибавка к прочности города (стены). */
   durability?: number;
   /** Прибавка к силе города в защите и при выстреле (стены). */
@@ -29,9 +34,9 @@ export interface BuildingDef {
   stability?: number;
   /** Улучшение какого здания (занимает тот же слот). */
   upgradeOf?: string;
-  /** С какой эпохи доступно (индекс). */
+  /** С какой эпохи доступно (индекс; сейчас только у чудес). */
   epoch?: number;
-  /** Чудо света: одно на весь мир. */
+  /** Чудо света: одно на весь мир, слот не занимает. */
   wonder?: boolean;
 }
 

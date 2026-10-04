@@ -13,6 +13,8 @@ import {
   epochOf,
   findCity,
   nationTrait,
+  buildingCurrency,
+  buildingPrice,
   nextEpochScience,
   pathsConfig,
   projectCity,
@@ -133,7 +135,7 @@ export class PathsWindow {
       <h3>Эпоха: ${esc(epochName(e))}</h3>
       <div class="row"><span>Заработано науки</span><span>${p.scienceTotal}${next ? ` / ${next} до эпохи «${esc(epochName(e + 1))}»` : ' — последняя эпоха'}</span></div>
       <div class="bar"><div style="width:${pct}%"></div></div>
-      <div class="muted small">Каждая эпоха: юнитам ×${1 + cfg.strengthPerEpoch} к силе и +${cfg.mpPerEpoch} к ходу, +${cfg.freeCitiesPerEpoch} город без штрафа к стабильности, новые здания и чудеса.
+      <div class="muted small">Каждая эпоха: юнитам ×${1 + cfg.strengthPerEpoch} к силе и +${cfg.mpPerEpoch} к ходу, +${cfg.freeCitiesPerEpoch} город без штрафа к стабильности, новые чудеса света. Трата науки эпоху не отнимает.
       Технологический разрыв: если ваша наука в ${pathsConfig.techGap.minRatio}+ раза больше, чем у врага, — до +${pathsConfig.techGap.max * 100}% в бою с ним.</div>`;
   }
 
@@ -228,9 +230,10 @@ export class PathsWindow {
       .map((b) => {
         const city = wonderCity(state, b.id);
         const where = city ? (explored[city.tile] ? `${city.name} (${state.powers[city.owner].name})` : 'построено где-то в мире') : 'свободно';
-        return `<div class="row"><span>${esc(b.name)} <span class="muted small">с эпохи «${esc(epochName(b.epoch ?? 0))}», ${b.basePrice} ${icon('gold')}</span></span><span>${esc(where)}</span></div>`;
+        const price = `${buildingPrice(state, power, b.id)} ${icon(buildingCurrency(b))}`;
+        return `<div class="row"><span>${esc(b.name)} <span class="muted small">с эпохи «${esc(epochName(b.epoch ?? 0))}», ${price}</span></span><span>${esc(where)}</span></div>`;
       })
       .join('');
-    return `<h3>Чудеса света</h3><div class="muted small">Одно на весь мир; в городе с мрамором на ${pathsConfig.culture.wonderMarbleDiscount * 100}% дешевле.</div>${rows}`;
+    return `<h3>Чудеса света</h3><div class="muted small">Одно на весь мир, слот не занимает, покупается за культуру; в городе с мрамором на ${pathsConfig.culture.wonderMarbleDiscount * 100}% дешевле.</div>${rows}`;
   }
 }

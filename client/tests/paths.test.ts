@@ -5,11 +5,11 @@ import { cityStrength, forecastAttack } from '../src/core/combat';
 import { execute, validate, type Command } from '../src/core/commands';
 import { pathsConfig, type AbilityId } from '../src/core/data';
 import { NO_TERMS, evaluateDeal } from '../src/core/diplomacy';
-import { computeIncome } from '../src/core/economy';
+import { citizenPrice, computeIncome } from '../src/core/economy';
 import { epochOf, techGapBonus } from '../src/core/epochs';
 import { findCoalitionLeader } from '../src/core/relations';
 import { computeStability, refreshAllStability } from '../src/core/stability';
-import { atWar, citiesOf, unitAt } from '../src/core/state';
+import { atWar, citiesOf, cityMaxDurability, cityUnitLevel, trimBuildings, unitAt, usedSlots } from '../src/core/state';
 import { S_MARBLE, NONE, type GameState } from '../src/core/types';
 import { computeVisible } from '../src/core/visibility';
 import { addCity, addUnit, at, blankState, declareWar, meetAll } from './helpers';
@@ -149,17 +149,96 @@ describe('стабильность', () => {
 });
 
 describe('здания, улучшения и чудеса', () => {
-  it('улучшение открывается с эпохой и занимает тот же слот', () => {
+  it('улучшение доступно без эпохи, платится валютой своей линии и занимает тот же слот', () => {
     const s = three();
     const city = s.cities[0];
+    const p = s.powers[0];
     city.buildings = ['library'];
     const cmd: Command = { type: 'BuyBuilding', power: 0, cityId: city.id, buildingId: 'university' };
-    expect(validate(s, cmd)).toEqual({ ok: false, reason: 'Откроется в эпоху «Античность»' });
-    s.powers[0].scienceTotal = epochs[1].science;
+    p.science = 10;
+    expect(validate(s, cmd)).toEqual({ ok: false, reason: `Нужно ${buildingPrice(s, 0, 'university')} науки` });
+    p.science = 100;
+    const gold = p.gold;
+    const total = p.scienceTotal;
+    const price = buildingPrice(s, 0, 'university');
     expect(execute(s, cmd).ok).toBe(true);
     expect(city.buildings).toEqual(['university']);
+    expect(p.science).toBe(100 - price);
+    expect(p.gold).toBe(gold);
+    expect(p.scienceTotal).toBe(total);
     city.purchasedThisTurn = false;
     expect(validate(s, { type: 'BuyBuilding', power: 0, cityId: city.id, buildingId: 'library' })).toEqual({ ok: false, reason: 'Уже есть улучшенное здание' });
+    // Цепочка идёт по шагам: лабораторию — только после обсерватории.
+    expect(validate(s, { type: 'BuyBuilding', power: 0, cityId: city.id, buildingId: 'laboratory' })).toEqual({ ok: false, reason: 'Сначала нужно здание «Обсерватория»' });
+    p.science = 500;
+    expect(execute(s, { type: 'BuyBuilding', power: 0, cityId: city.id, buildingId: 'observatory' }).ok).toBe(true);
+    expect(city.buildings).toEqual(['observatory']);
+  });
+
+  it('культурная линия платится культурой, рыночная — золотом', () => {
+    const s = three();
+    const city = s.cities[0];
+    const p = s.powers[0];
+    city.level = 2;
+    city.buildings = ['temple', 'market'];
+    const culture = p.culture;
+    const theatre = buildingPrice(s, 0, 'theatre');
+    expect(execute(s, { type: 'BuyBuilding', power: 0, cityId: city.id, buildingId: 'theatre' }).ok).toBe(true);
+    expect(p.culture).toBe(culture - theatre);
+    city.purchasedThisTurn = false;
+    p.gold = 1000;
+    const fair = buildingPrice(s, 0, 'fair');
+    expect(execute(s, { type: 'BuyBuilding', power: 0, cityId: city.id, buildingId: 'fair' }).ok).toBe(true);
+    expect(p.gold).toBe(1000 - fair);
+    expect(city.buildings).toEqual(['theatre', 'fair']);
+  });
+
+  it('чудо света слот не занимает и покупается за культуру', () => {
+    const s = three();
+    const city = s.cities[0];
+    const p = s.powers[0];
+    city.buildings = ['market'];
+    expect(validate(s, { type: 'BuyBuilding', power: 0, cityId: city.id, buildingId: 'library' })).toEqual({ ok: false, reason: 'Нет свободных слотов' });
+    const gold = p.gold;
+    const culture = p.culture;
+    expect(execute(s, { type: 'BuyBuilding', power: 0, cityId: city.id, buildingId: 'pyramids' }).ok).toBe(true);
+    expect(p.gold).toBe(gold);
+    expect(p.culture).toBe(culture - buildingPrice(s, 0, 'pyramids', city));
+    expect(usedSlots(city)).toBe(1);
+    // Потеря уровня сносит обычные здания, но не чудо.
+    city.level = 2;
+    city.buildings = ['market', 'pyramids', 'library'];
+    city.level = 1;
+    trimBuildings(city);
+    expect(city.buildings).toEqual(['market', 'pyramids']);
+  });
+
+  it('военная академия даёт юниты 3-го уровня по цене четырёх жителей', () => {
+    const s = three();
+    const city = s.cities[0];
+    const p = s.powers[0];
+    city.buildings = ['barracks'];
+    p.gold = 1000;
+    expect(execute(s, { type: 'BuyBuilding', power: 0, cityId: city.id, buildingId: 'academy' }).ok).toBe(true);
+    expect(cityUnitLevel(city)).toBe(3);
+    city.purchasedThisTurn = false;
+    const gold = p.gold;
+    expect(execute(s, { type: 'BuyMilitary', power: 0, cityId: city.id, unitType: 'warrior' }).ok).toBe(true);
+    expect(p.gold).toBe(gold - 4 * citizenPrice(s, 0));
+    expect(s.units.find((u) => u.owner === 0 && u.type === 'warrior')?.level).toBe(3);
+  });
+
+  it('крепость и бастион крепче стен', () => {
+    const s = three();
+    const city = s.cities[0];
+    city.level = 1;
+    city.buildings = ['walls'];
+    const walls = cityStrength(city);
+    city.buildings = ['fortress'];
+    expect(cityStrength(city)).toBe(walls + 1);
+    city.buildings = ['bastion'];
+    expect(cityStrength(city)).toBe(walls + 2);
+    expect(cityMaxDurability(city)).toBe(cityMaxDurability({ ...city, buildings: ['walls'] }) + 1);
   });
 
   it('чудо света одно на весь мир и дешевле в городе с мрамором', () => {

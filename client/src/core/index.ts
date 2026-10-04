@@ -38,5 +38,6 @@ export {
   traitDef,
   type AbilityId,
   type BuildingDef,
+  type Currency,
   type TraitDef,
 } from './data';

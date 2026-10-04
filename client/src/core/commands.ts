@@ -23,7 +23,7 @@ import { moveTowards } from './movement';
 import {
   findCity,
   findUnit,
-  hasBuildingEffect,
+  cityUnitLevel,
   hasPact,
   isLand,
   mapSize,
@@ -31,7 +31,7 @@ import {
 } from './state';
 import { advanceTurn } from './turn';
 import { abilityBlocker, useAbility, type AbilityUse } from './abilities';
-import { addBuilding, buildingBlocker } from './buildings';
+import { addBuilding, buildingBlocker, buildingCurrency, currencyGenitive } from './buildings';
 import { epochMpBonus } from './epochs';
 import { nationTrait, unitTypeMp } from './nations';
 import { refreshAllStability, refreshStability } from './stability';
@@ -131,7 +131,8 @@ export function validate(state: GameState, cmd: Command): Validation {
       const blocker = buildingBlocker(state, cmd.power, city, buildingDef(cmd.buildingId));
       if (blocker) return fail(blocker);
       const price = buildingPrice(state, cmd.power, cmd.buildingId, city);
-      if (power.gold < price) return fail(`Нужно ${price} золота`);
+      const currency = buildingCurrency(buildingDef(cmd.buildingId));
+      if (power[currency] < price) return fail(`Нужно ${price} ${currencyGenitive(currency)}`);
       return OK;
     }
 
@@ -139,9 +140,9 @@ export function validate(state: GameState, cmd: Command): Validation {
       const city = findCity(state, cmd.cityId);
       if (!city || city.owner !== cmd.power) return fail('Это не ваш город');
       if (!MILITARY_TYPES.includes(cmd.unitType)) return fail('Неизвестный тип юнита');
-      if (!hasBuildingEffect(city, 'barracks')) return fail('Нужны казармы');
+      if (!cityUnitLevel(city)) return fail('Нужны казармы');
       if (city.purchasedThisTurn) return fail('В этом городе уже была покупка в этом ходу');
-      const price = militaryPrice(state, cmd.power);
+      const price = militaryPrice(state, cmd.power, cityUnitLevel(city));
       if (power.gold < price) return fail(`Нужно ${price} золота`);
       if (spawnTile(state, city) === null) return fail('Вокруг города нет свободной клетки');
       return OK;
@@ -266,7 +267,8 @@ export function apply(state: GameState, cmd: Command): void {
     case 'BuyBuilding': {
       const city = findCity(state, cmd.cityId)!;
       const def = buildingDef(cmd.buildingId);
-      power.gold -= buildingPrice(state, cmd.power, cmd.buildingId, city);
+      // Эпохи считаются по всей заработанной науке, поэтому трата науки эпоху не отнимает.
+      power[buildingCurrency(def)] -= buildingPrice(state, cmd.power, cmd.buildingId, city);
       city.purchasedThisTurn = true;
       addBuilding(city, def);
       if (def.wonder) log(state, NONE, `${power.name} строит чудо света «${def.name}» в городе ${city.name}`);
@@ -276,10 +278,11 @@ export function apply(state: GameState, cmd: Command): void {
 
     case 'BuyMilitary': {
       const city = findCity(state, cmd.cityId)!;
-      power.gold -= militaryPrice(state, cmd.power);
+      const level = cityUnitLevel(city);
+      power.gold -= militaryPrice(state, cmd.power, level);
       city.purchasedThisTurn = true;
       const mp = balance.units.boughtUnitsCanMove ? unitTypeMp(state, cmd.power, cmd.unitType) + epochMpBonus(state, cmd.power) : 0;
-      createUnit(state, cmd.power, cmd.unitType, spawnTile(state, city)!, mp, balance.units.barracksLevel);
+      createUnit(state, cmd.power, cmd.unitType, spawnTile(state, city)!, mp, level);
       log(state, cmd.power, `${city.name}: куплен ${unitDef(cmd.unitType).name.toLowerCase()}`);
       break;
     }

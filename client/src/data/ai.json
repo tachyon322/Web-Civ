@@ -95,7 +95,8 @@
     "wonderSaveWeight": 1.2,
     "convertReserve": 30,
     "propagandaReserve": 50,
-    "deterrentReserve": 1.5
+    "deterrentReserve": 1.5,
+    "abilityReserve": 40
   },
   "economy": {
     "minIncomeAfterPurchase": 1,

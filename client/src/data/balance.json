@@ -77,8 +77,7 @@
     "upkeepPerPerson": 1,
     "boughtUnitsCanMove": true,
     "transferCost": 1,
-    "barracksLevel": 2,
-    "barracksPriceInCitizens": 2
+    "militaryPricePerPerson": 1
   },
   "vision": {
     "unit": 2,

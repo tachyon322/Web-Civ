@@ -18,6 +18,10 @@ import {
   cityGrowthThreshold,
   cityMaxDurability,
   citySlots,
+  cityUnitLevel,
+  usedSlots,
+  militaryPrice,
+  buildingCurrency,
   cityStrength,
   cityStrengthParts,
   cityTileLimit,
@@ -61,7 +65,6 @@ import {
   findUnit,
   forecastAttack,
   foundCityPrice,
-  hasBuildingEffect,
   plunderCooldown,
   plunderLoot,
   turnsWord,
@@ -76,6 +79,7 @@ import {
   isJumpStep,
   isLand,
   type BuildingDef,
+  type Currency,
   type Breakdown,
   type CaptureChoice,
   type City,
@@ -147,13 +151,15 @@ function unitTitle(state: GameState, unit: Unit): string {
   return `${name}${unit.type === 'citizen' ? '' : ` ${unit.level} ур.`}`;
 }
 
-function buildingSummary(b: BuildingDef): string {
-  if (b.effect === 'barracks') return 'военные юниты сразу 2-го уровня';
-  if (b.effect === 'walls') return `+${b.durability ?? 1} к прочности, +${b.strength ?? 0} к силе города`;
+/** Что даёт здание; для покупки улучшения — ещё и какое здание оно заменит. */
+function buildingSummary(b: BuildingDef, purchase = false): string {
+  const instead = purchase && b.upgradeOf ? `, вместо «${buildingDef(b.upgradeOf).name}»` : '';
+  if (b.effect === 'barracks') return `военные юниты сразу ${b.unitLevel}-го уровня${instead}`;
+  if (b.effect === 'walls') return `+${b.durability ?? 0} к прочности, +${b.strength ?? 0} к силе города${instead}`;
   const parts = Object.entries(b.yields).map(([k, v]) => `+${v} ${RES_NAMES[k]}`);
   if (b.stability) parts.push(`+${b.stability} к стабильности`);
   if (b.strength) parts.push(`+${b.strength} к силе города`);
-  if (b.upgradeOf) parts.push(`вместо «${buildingDef(b.upgradeOf).name}»`);
+  if (purchase && b.upgradeOf) parts.push(`вместо «${buildingDef(b.upgradeOf).name}»`);
   if (b.wonder) parts.unshift('чудо света');
   return parts.join(', ');
 }
@@ -880,11 +886,19 @@ export class GameController {
   }
 
   /** Кнопка действия; причина отказа берётся из validate. showReason=false — причина уже сказана выше. */
-  private actionButton(action: string, label: string, price: number | null, cmd: Command, extra = '', showReason = true): string {
+  private actionButton(
+    action: string,
+    label: string,
+    price: number | null,
+    cmd: Command,
+    extra = '',
+    showReason = true,
+    currency: Currency = 'gold',
+  ): string {
     const v = validate(this.state, cmd);
     const reason = v.ok ? '' : v.reason;
     return `<button data-action="${action}" ${extra} ${v.ok ? '' : 'disabled'} title="${esc(reason)}">
-      ${esc(label)}${price !== null ? `<span class="price">${price} ${icon('gold')}</span>` : ''}
+      ${esc(label)}${price !== null ? `<span class="price">${price} ${icon(currency)}</span>` : ''}
     </button>${reason && showReason ? `<div class="reason">${esc(reason)}</div>` : ''}`;
   }
 
@@ -1001,7 +1015,7 @@ export class GameController {
     }
     const tiles = cityTiles(state, city.id).length;
     html += `<div class="row"><span title="Клетки, привязанные к городу: +1 к росту каждая">Клетки</span><span title="Вклад города в лимит земли державы">${tiles} · лимиту +${cityTileLimit(state, city)}</span></div>
-      <div class="row"><span>Слоты зданий</span><span>${city.buildings.length} / ${citySlots(city)}</span></div>`;
+      <div class="row"><span>Слоты зданий</span><span>${usedSlots(city)} / ${citySlots(city)}</span></div>`;
     const inc = this.cityIncome(city);
     html += `<div class="row"><span>Даёт за ход</span><span>${icon('gold')} ${inc.gold} · ${icon('science')} ${inc.science} · ${icon('culture')} ${inc.culture}</span></div>`;
     const capital = findCity(state, owner.capitalId);
@@ -1027,12 +1041,13 @@ export class GameController {
       '',
       showReason,
     );
-    if (hasBuildingEffect(city, 'barracks')) {
+    const unitLevel = cityUnitLevel(city);
+    if (unitLevel) {
       for (const type of MILITARY_TYPES) {
         html += this.actionButton(
           'buy-military',
-          `${unitDef(type).name} ${balance.units.barracksLevel} ур.`,
-          citizenPrice(state, this.power) * balance.units.barracksPriceInCitizens,
+          `${unitDef(type).name} ${unitLevel} ур.`,
+          militaryPrice(state, this.power, unitLevel),
           { type: 'BuyMilitary', power: this.power, cityId: city.id, unitType: type },
           `data-unit="${type}"`,
           showReason,
@@ -1041,18 +1056,19 @@ export class GameController {
     }
     const epoch = epochOf(state.powers[this.power]);
     for (const b of buildings) {
-      // Не показываем то, что здесь уже не купить: построенное, чужие чудеса, неподходящие улучшения,
-      // и то, что откроется позже следующей эпохи.
+      // Не показываем то, что здесь уже не купить: построенное, чужие чудеса, дальние шаги цепочек,
+      // и чудеса, которые откроются позже следующей эпохи.
       const blocker = buildingBlocker(state, this.power, city, b);
       if (blocker && /^(Здание уже|Уже есть улучш|Сначала нужно|Чудо уже)/.test(blocker)) continue;
       if ((b.epoch ?? 0) > epoch + 1) continue;
       html += this.actionButton(
         'buy-building',
-        `${b.name} (${buildingSummary(b)})`,
+        `${b.name} (${buildingSummary(b, true)})`,
         buildingPrice(state, this.power, b.id, city),
         { type: 'BuyBuilding', power: this.power, cityId: city.id, buildingId: b.id },
         `data-building="${b.id}"`,
         showReason,
+        buildingCurrency(b),
       );
     }
     html += `</div>`;

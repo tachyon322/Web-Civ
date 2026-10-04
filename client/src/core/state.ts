@@ -82,6 +82,18 @@ export function citySlots(city: City): number {
   return balance.city.slots[city.level - 1];
 }
 
+/** Занятые слоты: чудеса света слот не занимают. */
+export function usedSlots(city: City): number {
+  return city.buildings.filter((b) => !buildingDef(b).wonder).length;
+}
+
+/** После потери уровня лишние здания (не чудеса) сносятся — с последнего построенного. */
+export function trimBuildings(city: City): void {
+  for (let i = city.buildings.length - 1; i >= 0 && usedSlots(city) > citySlots(city); i--) {
+    if (!buildingDef(city.buildings[i]).wonder) city.buildings.splice(i, 1);
+  }
+}
+
 /** Порог роста до следующего уровня или null на максимальном уровне. */
 export function cityGrowthThreshold(city: City): number | null {
   if (city.level >= balance.city.maxLevel) return null;
@@ -89,7 +101,12 @@ export function cityGrowthThreshold(city: City): number | null {
 }
 
 export function unitPeople(unit: Unit): number {
-  return 2 ** (unit.level - 1);
+  return peopleAtLevel(unit.level);
+}
+
+/** Сколько людей в юните этого уровня: 1, 2, 4, 8. */
+export function peopleAtLevel(level: number): number {
+  return 2 ** (level - 1);
 }
 
 /** Максимальная сила юнита равна числу людей в нём. */
@@ -107,6 +124,11 @@ export function isMilitary(unit: Unit): boolean {
 
 export function hasBuildingEffect(city: City, effect: 'barracks' | 'walls'): boolean {
   return city.buildings.some((b) => buildingDef(b).effect === effect);
+}
+
+/** Уровень военного юнита, которого можно купить в городе (0 — нет казарм). */
+export function cityUnitLevel(city: City): number {
+  return city.buildings.reduce((max, b) => Math.max(max, buildingDef(b).unitLevel ?? 0), 0);
 }
 
 export function cityMaxDurability(city: City): number {

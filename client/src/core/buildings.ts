@@ -1,11 +1,24 @@
-// Здания: улучшения (библиотека → университет → лаборатория, храм → театр → музей) занимают тот же слот
-// и открываются с эпохами; чудо света одно на весь мир; саботаж на время отключает здание.
+// Здания: у каждого базового здания цепочка улучшений в том же слоте (рынок → ярмарка → банк → биржа и т. д.),
+// доступных в любой момент; платят валютой своей линии (наука, культура, иначе золото).
+// Чудо света одно на весь мир, слот не занимает и открывается с эпохой; саботаж на время отключает здание.
 
-import { buildingDef, buildings, pathsConfig, type BuildingDef } from './data';
+import { buildingDef, buildings, pathsConfig, type BuildingDef, type Currency } from './data';
 import { epochName, epochOf } from './epochs';
 import { nationTrait } from './nations';
-import { citiesOf, cityTiles, citySlots } from './state';
+import { citiesOf, cityTiles, citySlots, usedSlots } from './state';
 import { S_MARBLE, type City, type GameState } from './types';
+
+/** Чем платят за здание. */
+export function buildingCurrency(def: BuildingDef): Currency {
+  return def.currency ?? 'gold';
+}
+
+const CURRENCY_GENITIVE: Record<Currency, string> = { gold: 'золота', science: 'науки', culture: 'культуры' };
+
+/** «золота», «науки», «культуры» — для «Нужно 40 науки». */
+export function currencyGenitive(currency: Currency): string {
+  return CURRENCY_GENITIVE[currency];
+}
 
 /** Работающие здания города (без отключённого саботажем). */
 export function activeBuildings(city: City): string[] {
@@ -53,9 +66,9 @@ export function buildingBlocker(state: GameState, power: number, city: City, def
   }
   if (def.wonder) {
     const owner = wonderCity(state, def.id);
-    if (owner) return `Чудо уже построено: ${owner.name}`;
+    return owner ? `Чудо уже построено: ${owner.name}` : null;
   }
-  if (city.buildings.length >= citySlots(city)) return 'Нет свободных слотов';
+  if (usedSlots(city) >= citySlots(city)) return 'Нет свободных слотов';
   return null;
 }
 
