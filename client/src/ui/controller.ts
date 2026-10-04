@@ -24,6 +24,8 @@ import {
   landLeft,
   landLimit,
   landTiles,
+  citiesOf,
+  unitsOf,
   bordersTerritory,
   cityTiles,
   characterDef,
@@ -90,6 +92,7 @@ import { emptyOverlay, type MapRenderer, type Overlay } from '../render/MapRende
 import type { Minimap } from '../render/minimap';
 import { esc, showChoice } from './dialog';
 import { escIcons, icon } from './icons';
+import type { Cue } from '../audio/sfx';
 import { PathsWindow } from './paths';
 import { DiplomacyWindow, statusText } from './diplomacy';
 
@@ -179,6 +182,12 @@ export class GameController {
   onTurnEnd: ((state: GameState) => void) | null = null;
   /** Партия закончилась для игрока: победа (своя или чужая) или выбывание. */
   onGameOver: ((state: GameState) => void) | null = null;
+  /** Звуковой эффект события. */
+  onSound: ((cue: Cue) => void) | null = null;
+  /** Идёт ли у игрока война (для настроения музыки). */
+  onWarState: ((atWar: boolean) => void) | null = null;
+  /** Клавиша M — выключить или включить звук. */
+  onToggleSound: (() => void) | null = null;
 
   constructor(
     private renderer: MapRenderer,
@@ -248,16 +257,92 @@ export class GameController {
 
   private dispatch(cmd: Command): boolean {
     if (this.busy) return false;
+    const before = this.soundSnapshot(cmd);
     const result = execute(this.state, cmd);
     if (!result.ok) {
+      this.sound('error');
       this.toast(result.reason);
       return false;
     }
+    this.playCommandSound(cmd, before);
     const sel = this.selection;
     if (sel?.kind === 'unit' && !findUnit(this.state, sel.id)) this.selection = null;
     this.refresh();
     this.checkGameOver();
     return true;
+  }
+
+  // ---------- Звук ----------
+
+  private sound(cue: Cue | null, delayMs = 0): void {
+    if (!cue || !this.onSound) return;
+    if (delayMs) window.setTimeout(() => this.onSound?.(cue), delayMs);
+    else this.onSound(cue);
+  }
+
+  /** Что было до команды — чтобы понять по результату, какой звук нужен. */
+  private soundSnapshot(cmd: Command) {
+    const state = this.state;
+    const unit = 'unitId' in cmd ? findUnit(state, cmd.unitId) : undefined;
+    return {
+      land: landTiles(state, this.power),
+      mine: unitsOf(state, this.power).length,
+      others: state.units.length - unitsOf(state, this.power).length,
+      cities: citiesOf(state, this.power).length,
+      epoch: epochOf(state.powers[this.power]),
+      wars: state.powers[this.power].wars.length,
+      unitTile: unit?.tile ?? NONE,
+      unitMp: unit?.mp ?? 0,
+    };
+  }
+
+  private playCommandSound(cmd: Command, before: ReturnType<GameController['soundSnapshot']>): void {
+    const state = this.state;
+    const p = state.powers[this.power];
+    if (epochOf(p) > before.epoch) return this.sound('epoch');
+    const killed = state.units.length - unitsOf(state, this.power).length < before.others;
+    const lost = unitsOf(state, this.power).length < before.mine;
+    switch (cmd.type) {
+      case 'Move': {
+        const unit = findUnit(state, cmd.unitId);
+        if (!unit || unit.tile === before.unitTile) return;
+        if (landTiles(state, this.power) > before.land) return this.sound('claim');
+        const spent = before.unitMp - unit.mp;
+        if (distance(state.map, before.unitTile, unit.tile) > spent) return this.sound('jump');
+        return this.sound(unit.type === 'horseman' ? 'hooves' : 'step');
+      }
+      case 'Attack': {
+        const unit = findUnit(state, cmd.unitId);
+        this.sound(unit && unitDef(unit.type).range > 1 ? 'arrow' : 'melee');
+        if (killed || lost) this.sound('death', 380);
+        return;
+      }
+      case 'CaptureCity':
+        return this.sound('capture');
+      case 'FoundCity':
+        return this.sound('found');
+      case 'BuyCitizen':
+      case 'BuyMilitary':
+      case 'Gift':
+        return this.sound('coins');
+      case 'BuyBuilding':
+        return this.sound(buildingDef(cmd.buildingId).wonder ? 'wonder' : 'build');
+      case 'BuyProjectStage':
+        return this.sound('wonder');
+      case 'Merge':
+        return this.sound('merge');
+      case 'DeclareWar':
+        return this.sound('war');
+      case 'UseAbility':
+        return this.sound('ability');
+      case 'CultureExchange':
+      case 'Propose':
+      case 'Respond':
+      case 'CancelPact':
+        return this.sound(p.wars.length < before.wars ? 'peace' : p.wars.length > before.wars ? 'war' : 'diplomacy');
+      default:
+        return;
+    }
   }
 
   /** Итог партии: победа (своя или чужая) — один раз. */
@@ -268,6 +353,7 @@ export class GameController {
     this.onGameOver?.(this.state);
     const name = this.state.powers[w.power].name;
     const mine = w.power === this.power;
+    this.sound(mine ? 'victory' : 'defeat');
     showChoice(
       mine ? 'Победа!' : 'Поражение',
       `${mine ? 'Ваша держава' : name} побеждает на ходу ${w.turn}: ${victoryName(w.kind)}. Можно посмотреть на карту или начать заново.`,
@@ -281,6 +367,8 @@ export class GameController {
     if (this.busy || !this.state.powers[this.power].alive || this.state.winner) return;
     const state = this.state;
     const warsBefore = [...state.powers[this.power].wars];
+    const citiesBefore = citiesOf(state, this.power).length;
+    const epochBefore = epochOf(state.powers[this.power]);
     this.setBusy(true);
     try {
       const commands = await this.bots.play(state);
@@ -302,6 +390,12 @@ export class GameController {
     this.refresh();
     const declared = state.powers[this.power].wars.filter((w) => !warsBefore.includes(w)).map((w) => state.powers[w].name);
     if (declared.length) this.toast(`Новая война: ${declared.join(', ')} — подробности в журнале`);
+    if (!state.winner && state.powers[this.power].alive) {
+      if (declared.length) this.sound('war');
+      else if (citiesOf(state, this.power).length < citiesBefore) this.sound('alarm');
+      else if (epochOf(state.powers[this.power]) > epochBefore) this.sound('epoch');
+      else this.sound('turn');
+    }
     this.onTurnEnd?.(state);
     if (state.winner) this.checkGameOver();
     else if (!state.powers[this.power].alive) this.showDefeat();
@@ -322,6 +416,7 @@ export class GameController {
   private showDefeat(): void {
     if (this.overShown) return;
     this.overShown = true;
+    this.sound('defeat');
     this.onGameOver?.(this.state);
     showChoice(
       'Ваша держава выбыла',
@@ -342,6 +437,7 @@ export class GameController {
     this.renderTileInfo();
     this.diplomacy.update();
     this.paths.update();
+    this.onWarState?.(this.state.powers[this.power].wars.length > 0);
   }
 
   // ---------- Ввод ----------
@@ -365,6 +461,7 @@ export class GameController {
     } else {
       this.selection = null;
     }
+    if (this.selection && (this.selection.kind !== sel?.kind || this.selection.id !== sel?.id)) this.sound('select');
     this.updateOverlay();
     this.renderPanel();
   }
@@ -423,6 +520,8 @@ export class GameController {
     if (e.key === 'Enter') {
       e.preventDefault();
       this.endTurn();
+    } else if (e.key === 'm' || e.key === 'M' || e.key === 'ь' || e.key === 'Ь') {
+      this.onToggleSound?.();
     } else if (e.key === 'Escape') {
       this.selection = null;
       this.updateOverlay();

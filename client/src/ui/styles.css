@@ -875,6 +875,20 @@ button.link:hover:not(:disabled) {
   width: auto;
 }
 
+.modal label.slider {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  margin: 8px 0;
+}
+
+.modal label.slider input {
+  width: 100%;
+  accent-color: #e0b84a;
+}
+
 .modal.login a {
   color: var(--science);
 }
