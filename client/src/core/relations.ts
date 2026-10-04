@@ -275,3 +275,15 @@ export function opinion(state: GameState, from: number, to: number): Breakdown {
   b.total = Math.max(ocfg.min, Math.min(ocfg.max, b.total));
   return b;
 }
+
+/** Уровень настроения по отношению: 0 — «окей», 1 — довольны, 2 — спокойны, 3 — скрежещут зубами, 4 — злые. */
+export function moodLevel(total: number): number {
+  const m = diplomacyConfig.moods;
+  if (total >= m.ok) return 0;
+  if (total >= m.good) return 1;
+  if (total >= m.calm) return 2;
+  if (total >= m.grit) return 3;
+  return 4;
+}
+
+export const MOOD_NAMES = ['Всё окей', 'Доброжелательны', 'Спокойны', 'Скрежещут зубами', 'Злы'];

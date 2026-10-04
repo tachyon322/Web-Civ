@@ -6,6 +6,8 @@ import { Application, Container, Culler, Graphics, Rectangle, Sprite, Text, Text
 import { distance, neighborInDirection, neighbors, type MapSize } from '../core/hex';
 import { buildingDef } from '../core/data';
 import { atWar, cityMaxDurability, hasBuildingEffect, unitMaxStrength } from '../core/state';
+import { moodLevel, opinion } from '../core/relations';
+import { MOOD_H, MOOD_W, moodSvg } from '../ui/moods';
 import { epochOf } from '../core/epochs';
 import { computeVisible } from '../core/visibility';
 import {
@@ -218,6 +220,7 @@ export class MapRenderer {
   private sprites = new SpriteCache();
   private fogLayer = new Container();
   private labelLayer = new Container();
+  private moodLayer = new Container();
   private topLayer = new Graphics();
 
   private state: GameState | null = null;
@@ -245,6 +248,7 @@ export class MapRenderer {
       this.unitLayer,
       this.fogLayer,
       this.labelLayer,
+      this.moodLayer,
       this.topLayer,
     );
     app.stage.addChild(this.world);
@@ -272,7 +276,7 @@ export class MapRenderer {
   setGame(state: GameState): void {
     this.state = state;
     this.size = { width: state.map.width, height: state.map.height };
-    for (const layer of [this.waterLayer, this.landLayer, this.decorLayer, this.specialLayer, this.territoryLayer, this.fogLayer, this.cityLayer, this.labelLayer]) {
+    for (const layer of [this.waterLayer, this.landLayer, this.decorLayer, this.specialLayer, this.territoryLayer, this.fogLayer, this.cityLayer, this.labelLayer, this.moodLayer]) {
       layer.removeChildren().forEach((c) => c.destroy());
     }
     this.cityViews.clear();
@@ -662,6 +666,34 @@ export class MapRenderer {
       this.destroyCityView(view);
       this.cityViews.delete(id);
     }
+    this.drawMoods(explored);
+  }
+
+  /** Смайлик отношения над столицей державы, а если её не видели — над самым крупным из увиденных городов. */
+  private drawMoods(explored: number[]): void {
+    const state = this.state!;
+    this.moodLayer.removeChildren().forEach((c) => c.destroy());
+    const human = state.humanPower;
+    const met = state.powers[human].met;
+    const shown = new Map<number, (typeof state.cities)[number]>();
+    for (const city of state.cities) {
+      if (city.owner === human || !explored[city.tile] || !met.includes(city.owner)) continue;
+      const best = shown.get(city.owner);
+      const better = !best || (city.isCapital && !best.isCapital) || (city.isCapital === best.isCapital && (city.level > best.level || (city.level === best.level && city.id < best.id)));
+      if (better) shown.set(city.owner, city);
+    }
+    for (const [owner, city] of shown) {
+      if (!state.powers[owner].alive) continue;
+      const level = moodLevel(opinion(state, owner, human).total);
+      const texture = this.sprites.get(`mood|${level}`, MOOD_W, MOOD_H, () => moodSvg(level));
+      if (!texture) continue;
+      const { x, y } = tileCenter(this.size, city.tile);
+      const sprite = new Sprite(texture);
+      sprite.anchor.set(0.5, 1);
+      sprite.scale.set(1);
+      sprite.position.set(x, y - (this.simple ? 20 : 32));
+      this.moodLayer.addChild(sprite);
+    }
   }
 
   private destroyCityView(view: CityView): void {
@@ -679,6 +711,7 @@ export class MapRenderer {
     }
     this.drawSpecials();
     this.drawUnits();
+    if (this.state) this.drawMoods(this.state.powers[this.state.humanPower].explored);
     this.requestRender();
   }
 

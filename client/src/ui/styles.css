@@ -1253,3 +1253,13 @@ button.link:hover:not(:disabled) {
     grid-template-columns: 1fr;
   }
 }
+
+.moodbox {
+  display: inline-block;
+  line-height: 0;
+  vertical-align: middle;
+}
+
+.moodbox svg {
+  display: block;
+}

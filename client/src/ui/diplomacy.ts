@@ -28,6 +28,8 @@ import {
   inciteStrength,
   influenceGain,
   influenceOf,
+  MOOD_NAMES,
+  moodLevel,
   opinion,
   tourGain,
   pendingProposals,
@@ -48,6 +50,7 @@ import {
 import { NONE } from '../core/types';
 import { inciteForecast } from '../ai/incite';
 import { esc, showChoice } from './dialog';
+import { moodFor } from './moods';
 import { escIcons, icon } from './icons';
 import { flagFor } from './flags';
 
@@ -250,7 +253,7 @@ export class DiplomacyWindow {
         return `<li data-target="${p}" class="${p === this.target ? 'selected' : ''}">
           ${flagFor(pw.nationId, pw.color)}
           <span class="name">${esc(pw.name)}${badge}</span>
-          <span class="op ${op >= 0 ? 'good' : 'bad'}">${signed(op)}</span>
+          <span class="op ${op >= 0 ? 'good' : 'bad'}" title="${MOOD_NAMES[moodLevel(op)]}">${moodFor(moodLevel(op), 20)} ${signed(op)}</span>
           <span class="status">${esc(statusText(state, power, p))}</span>
         </li>`;
       })
@@ -287,7 +290,7 @@ export class DiplomacyWindow {
     html += `<div class="row" title="${esc(deterrence.items.map((i) => `${i.label}: ${i.value}`).join('\n'))}"><span>Индекс сдерживания</span><span>${deterrence.total} (ваш ${deterrenceIndex(state, power).total})</span></div>
       <div class="row" title="По нему оцениваются подарки: ценность — в ходах дохода получателя"><span>Доход золота</span><span>${grossGold(state, t)} за ход</span></div>
       ${this.influenceRows()}
-      <h3>Их отношение к вам: <span class="${op.total >= 0 ? 'good' : 'bad'}">${signed(op.total)}</span></h3>
+      <h3>Их отношение к вам: ${moodFor(moodLevel(op.total), 30)} <span class="${op.total >= 0 ? 'good' : 'bad'}">${signed(op.total)}</span> <span class="muted">${MOOD_NAMES[moodLevel(op.total)]}</span></h3>
       <div class="breakdown">${breakdownLines(op)}</div>`;
 
     const proposals = pendingProposals(state, power).filter((pr) => pr.from === t);

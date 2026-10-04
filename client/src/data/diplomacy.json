@@ -20,6 +20,7 @@
     "leaderThreat": -30,
     "coalitionPartner": 10
   },
+  "moods": { "ok": 30, "good": 10, "calm": -9, "grit": -39 },
   "memories": {
     "gift": { "label": "Подарки", "hold": 10, "fade": 1 },
     "culture": { "label": "Культурный обмен", "hold": 15, "fade": 1 },
