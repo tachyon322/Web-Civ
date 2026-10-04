@@ -7,15 +7,13 @@
     { "id": "industrial", "name": "Индустрия", "science": 2200, "units": { "citizen": "Житель", "warrior": "Пехотинец", "archer": "Артиллерист", "horseman": "Кавалерист" } }
   ],
   "epoch": {
-    "strengthPerEpoch": 0.1,
     "mpPerEpoch": 1,
     "freeCitiesPerEpoch": 1,
     "slotEpochs": [2, 4]
   },
-  "techGap": {
-    "minRatio": 1.5,
+  "curtain": {
     "perRatio": 0.25,
-    "max": 0.5
+    "max": 0.75
   },
   "stability": {
     "base": 50,
@@ -35,6 +33,7 @@
     "propaganda": -15,
     "propagandaMax": -30,
     "debts": -15,
+    "warOnHegemon": -20,
     "levels": [
       { "min": 70, "name": "Расцвет", "income": 0.1, "combat": 1 },
       { "min": 40, "name": "Норма", "income": 0, "combat": 1 },
@@ -64,22 +63,41 @@
     "shieldMax": 20,
     "wonderMarbleDiscount": 0.25
   },
+  "influence": {
+    "hegemonShare": 50,
+    "trade": 0.5,
+    "border": 0.5,
+    "perWonder": 0.1,
+    "ratioMin": 0.5,
+    "ratioMax": 2,
+    "decay": 0.03,
+    "opinionPerShare": 0.2,
+    "opinionMax": 20
+  },
   "abilities": {
     "recon": { "name": "Разведка", "path": "science", "cost": 40, "turns": 5 },
-    "fortify": { "name": "Фортификация", "path": "science", "cost": 50, "turns": 3, "strengthFactor": 3 },
-    "sabotage": { "name": "Саботаж", "path": "science", "cost": 40, "turns": 5 },
-    "deterrent": { "name": "Оружие сдерживания", "path": "science", "cost": 400, "epoch": 4, "levelLoss": 2, "deterrence": 100 },
+    "moderation": { "name": "Модерация контента", "path": "science", "cost": 50, "turns": 5 },
+    "sabotage": { "name": "Саботаж сети", "path": "science", "cost": 60, "turns": 5, "buildings": ["temple", "theatre", "opera", "museum"] },
+    "deanon": { "name": "Деанон", "path": "science", "cost": 50 },
+    "jammer": { "name": "Глушилка", "path": "science", "cost": 50, "turns": 5 },
     "callPeace": { "name": "Призыв к миру", "path": "culture", "cost": 60, "bonus": 30, "refusal": -15 },
     "propaganda": { "name": "Пропаганда", "path": "culture", "cost": 50, "turns": 5, "memory": -10 },
     "convert": { "name": "Переманивание", "path": "culture", "costPerPerson": 15, "memory": -10 },
-    "holiday": { "name": "Праздник", "path": "culture", "cost": 40, "turns": 5, "stability": 15 }
+    "holiday": { "name": "Праздник", "path": "culture", "cost": 40, "turns": 5, "stability": 15 },
+    "tour": { "name": "Гастроли", "path": "culture", "minCost": 30, "incomeTurns": 3, "gain": 10, "repeatWindow": 10, "repeatFactor": 0.5 },
+    "incite": {
+      "name": "Подстрекательство", "path": "culture", "cost": 60, "sizeMin": 0.5, "sizeMax": 2,
+      "minInfluence": 15, "fullInfluence": 50, "grievance": 30, "warFactor": 0.4, "tradeBreakOpinion": 0, "turns": 10, "cooldown": 10,
+      "exposedMemory": -20, "seenMemory": -5, "keepTurns": 50
+    }
   },
   "projects": {
-    "science": { "name": "Великий проект", "stages": [1000, 1500, 2000] },
-    "culture": { "name": "Мировое наследие", "stages": [1000, 1500, 2000], "wonders": 3 }
+    "science": { "name": "Великий проект", "stages": [1500, 3000, 6000], "cooldown": 10, "influenceCrash": 0.25, "jamStage": 2 }
   },
   "victory": {
     "federationShare": 0.6,
-    "federationMinVassals": 1
+    "federationMinVassals": 1,
+    "hegemonyShare": 0.5,
+    "hegemonyTurns": 10
   }
 }

@@ -24,24 +24,9 @@ export function nextEpochScience(power: Power): number | null {
   return e < LAST_EPOCH ? epochs[e + 1].science : null;
 }
 
-/** Множитель силы юнитов державы от эпохи. */
-export function epochStrengthFactor(state: GameState, power: number): number {
-  return 1 + pathsConfig.epoch.strengthPerEpoch * epochOf(state.powers[power]);
-}
-
 /** Прибавка к очкам хода от эпохи. */
 export function epochMpBonus(state: GameState, power: number): number {
   return pathsConfig.epoch.mpPerEpoch * epochOf(state.powers[power]);
-}
-
-/** Бонус технологического разрыва a над b: 0 или до +50%, если наука a сильно выше. */
-export function techGapBonus(state: GameState, a: number, b: number): number {
-  const cfg = pathsConfig.techGap;
-  const mine = state.powers[a].scienceTotal;
-  const theirs = Math.max(1, state.powers[b].scienceTotal);
-  const ratio = mine / theirs;
-  if (ratio < cfg.minRatio) return 0;
-  return Math.min(cfg.max, Math.round((ratio - 1) * cfg.perRatio * 100) / 100);
 }
 
 /** Облик юнита по эпохе: воин в древности — мечник в античности и так далее. */

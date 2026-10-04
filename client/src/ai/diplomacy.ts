@@ -13,6 +13,7 @@ import {
   lastProposalAge,
   NO_TERMS,
 } from '../core/diplomacy';
+import { influenceOf } from '../core/influence';
 import { grossGold, computeIncome } from '../core/economy';
 import { lastMemoryAge, opinion, strengthOf } from '../core/relations';
 import { atWar, citiesOf, findPact, hasPact, principalOf, vassalsOf } from '../core/state';
@@ -112,13 +113,16 @@ function seekPacts(ctx: BotContext): void {
     for (const kind of ['trade', 'alliance'] as const) {
       const deal: Deal = { kind };
       if (dealBlocker(state, power, t, deal) || !iWouldAccept(ctx, t, deal)) continue;
+      if (kind === 'trade' && state.powers[power].character === 'isolationist' && influenceOf(state, power, t) >= aiConfig.paths.isolationCancelShare) continue;
       offer(ctx, t, deal);
     }
     if (ctx.character.seeksUnion && !state.powers[t].isHuman) offer(ctx, t, { kind: 'union' });
     if (!state.powers[t].alive) continue;
     // Договор с тем, кого бот разлюбил, расторгается.
     const op = opinion(state, power, t).total;
-    if (hasPact(state, power, t, 'trade') && op < cfg.cancelTradeBelow) {
+    // Изоляционист рвёт договор с тем, чьё влияние на него растёт.
+    const isolate = state.powers[power].character === 'isolationist' && influenceOf(state, power, t) >= aiConfig.paths.isolationCancelShare;
+    if (hasPact(state, power, t, 'trade') && (op < cfg.cancelTradeBelow || isolate)) {
       exec(ctx, { type: 'CancelPact', power, target: t, kind: 'trade' });
     }
     const alliance = findPact(state, power, t, 'alliance');
@@ -237,3 +241,6 @@ export function diplomacyTurn(ctx: BotContext): void {
   askForHelp(ctx);
   demandTribute(ctx);
 }
+
+/** Для тестов. */
+export const seekPactsForTest = seekPacts;

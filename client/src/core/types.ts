@@ -75,17 +75,19 @@ export interface Power {
   stability: number;
   /** Действующие способности: разведка и пропаганда против других, праздник у себя. */
   effects: Effect[];
-  /** Есть оружие сдерживания. */
-  deterrent: boolean;
   /** Предупреждение об отделении города при мятежах, или null. */
   secession: { cityId: number; due: number } | null;
+  /** Влияние других держав на эту: доля 0..100 по id влияющей (нет записи — 0), в сумме не больше 100. */
+  influence: number[];
+  /** Ход, с которого держава — гегемон больше половины держав (отсчёт культурной победы); 0 — нет. */
+  hegemonySince: number;
 }
 
-export type EffectKind = 'recon' | 'propaganda' | 'holiday';
+export type EffectKind = 'recon' | 'propaganda' | 'holiday' | 'tour' | 'jammer';
 
 export interface Effect {
   kind: EffectKind;
-  /** На кого действует (праздник — на себя). */
+  /** На кого действует (праздник — на себя; гастроли — где прошли, для ослабления повторных). */
   target: number;
   /** Ход, с которого уже не действует. */
   until: number;
@@ -113,7 +115,10 @@ export type MemoryKind =
   | 'sabotage'
   | 'refusedPeace'
   | 'citySwayed'
-  | 'seceded';
+  | 'seceded'
+  | 'incited'
+  | 'incitedAgainst'
+  | 'intrigueSeen';
 
 /** Запомненное событие: значение со временем угасает (см. hold и fade в данных). */
 export interface Memory {
@@ -125,6 +130,20 @@ export interface Memory {
   turn: number;
   /** Подпись вместо стандартной, например «Нарушили договор с Римом». */
   label?: string;
+}
+
+/** Подстрекательство: by натравил a на b. Запоминается, чтобы его можно было раскрыть позже. */
+export interface Intrigue {
+  by: number;
+  a: number;
+  b: number;
+  turn: number;
+  /** Ход, с которого порог войны a против b снова обычный. */
+  until: number;
+  /** Сила 0..1 с учётом влияния и характера a. */
+  strength: number;
+  /** b знает, кто стоял за интригой. */
+  revealed: boolean;
 }
 
 export type PactKind = 'war' | 'truce' | 'trade' | 'alliance';
@@ -206,18 +225,18 @@ export interface City {
   /** Культурное давление соседа: кто давит (NONE — никто) и накопленное значение. */
   pressureFrom: number;
   pressure: number;
-  /** Сколько ходов ещё действует фортификация. */
-  fortifyTurns: number;
-  /** Саботаж: отключённое здание и сколько ходов оно ещё не работает. */
-  disabledBuilding: string | null;
+  /** Сколько ходов ещё действует модерация контента (нет давления и мятежей). */
+  moderationTurns: number;
+  /** Саботаж сети: сколько ходов ещё не работают храмы, театры, оперы и музеи. */
   disabledTurns: number;
-  /** Финальный проект в этом городе. */
-  project: { kind: ProjectKind; stages: number } | null;
+  /** Финальный проект в этом городе; stageTurn — ход покупки последнего этапа (для отката между этапами). */
+  project: { kind: ProjectKind; stages: number; stageTurn?: number } | null;
   /** Специалисты: учёные, мастера, купцы (всего не больше уровня города). */
   specialists: Record<SpecialistKind, number>;
 }
 
-export type ProjectKind = 'science' | 'culture';
+/** Финальный проект — только научный (культура побеждает гегемонией). */
+export type ProjectKind = 'science';
 
 export type VictoryKind = 'conquest' | 'federation' | 'science' | 'culture';
 
@@ -268,7 +287,7 @@ export interface GameSettings {
 }
 
 /** Версия формата состояния; растёт при любом несовместимом изменении GameState (миграции — в save/format). */
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 export interface GameState {
   version: number;
@@ -284,6 +303,8 @@ export interface GameState {
   pacts: Pact[];
   /** Предложения игроку (ждут ответа) и недавние ответы. */
   proposals: Proposal[];
+  /** Подстрекательства (в том числе нераскрытые). */
+  intrigues: Intrigue[];
   /** Держава, против которой собирается коалиция (близка к победе), или NONE. */
   coalitionLeader: number;
   /** Итог партии или null, пока она идёт. */

@@ -1,13 +1,14 @@
 // Отношения между державами: войны, перемирия, договоры, союзы, вассалитет и память о событиях.
 // Отношение одной державы к другой (от −100 до +100) всегда собирается из слагаемых, чтобы его можно было объяснить.
 
-import { diplomacyConfig, diplomacyTraits, memoryDef } from './data';
+import { diplomacyConfig, diplomacyTraits, memoryDef, pathsConfig } from './data';
 import { deterrenceIndex } from './deterrence';
 import type { Breakdown } from './economy';
 import { neighbors } from './hex';
 import { allied, atWar, cityAt, findPact, isMilitary, mapSize, vassalLink } from './state';
 import { turnsAgo } from './text';
-import { projectLeader } from './victory';
+import { hegemonyLeader, projectLeader } from './victory';
+import { hegemonOf, influenceOf } from './influence';
 import { NONE, type GameState, type Memory, type MemoryKind, type Pact, type PactKind } from './types';
 import { computeVisible } from './visibility';
 
@@ -66,6 +67,8 @@ export function forgetPower(state: GameState, power: number): void {
   state.pacts = state.pacts.filter((x) => x.a !== power && x.b !== power);
   p.suzerain = NONE;
   for (const other of state.powers) if (other.suzerain === power) other.suzerain = NONE;
+  p.influence = [];
+  for (const other of state.powers) if (other.influence[power]) other.influence[power] = 0;
   for (const pr of state.proposals) {
     if (pr.status === 'pending' && (pr.from === power || pr.to === power)) pr.status = 'expired';
   }
@@ -124,10 +127,12 @@ export function foreignCapitalsHeld(state: GameState, power: number): number {
   return n;
 }
 
-/** Держава, близкая к победе (против неё собирается коалиция), или NONE: финальный проект, затем завоевание. */
+/** Держава, близкая к победе (против неё собирается коалиция), или NONE: научный проект, отсчёт гегемонии, затем завоевание. */
 export function findCoalitionLeader(state: GameState): number {
   const builder = projectLeader(state);
   if (builder !== NONE) return builder;
+  const hegemon = hegemonyLeader(state);
+  if (hegemon !== NONE) return hegemon;
   const need = Math.max(1, Math.ceil(state.map.starts.length * diplomacyConfig.coalition.capitalsShare));
   let best = NONE;
   let bestHeld = 0;
@@ -232,6 +237,11 @@ export function opinion(state: GameState, from: number, to: number): Breakdown {
   if (!allied(state, from, to) && !atWar(state, from, to)) {
     const army = armyNearBorder(state, from, to);
     if (army) addItem(b, 'Их армия у нашей границы', -Math.min(ocfg.armyMax, army * ocfg.armyPerStrength) * traits.borderFactor);
+  }
+
+  if (hegemonOf(state, from) === to) {
+    const icfg = pathsConfig.influence;
+    addItem(b, 'Культурное влияние', Math.min(icfg.opinionMax, influenceOf(state, from, to) * icfg.opinionPerShare));
   }
 
   if (traits.respectsStrength) {

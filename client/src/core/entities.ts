@@ -54,8 +54,9 @@ export function blankPower(
     cultureTotal: 0,
     stability: 50,
     effects: [],
-    deterrent: false,
     secession: null,
+    influence: [],
+    hegemonySince: 0,
   };
 }
 
@@ -79,8 +80,7 @@ export function createCity(state: GameState, power: number, tile: number, isCapi
     revoltProgress: 0,
     pressureFrom: NONE,
     pressure: 0,
-    fortifyTurns: 0,
-    disabledBuilding: null,
+    moderationTurns: 0,
     disabledTurns: 0,
     project: null,
     specialists: { scientist: 0, artisan: 0, merchant: 0 },

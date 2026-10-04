@@ -18,7 +18,7 @@ describe('звук покупки', () => {
     Object.assign(s.powers[0], { gold: 1000, science: 1000, culture: 1000 });
     const city = addCity(s, 0, 5, 5, true);
     expect(cueOf(s, { type: 'BuyCitizen', power: 0, cityId: city.id })).toBe('coins');
-    expect(cueOf(s, { type: 'UseAbility', power: 0, ...NO_TARGET, ability: 'fortify', cityId: city.id })).toBe('science');
+    expect(cueOf(s, { type: 'UseAbility', power: 0, ...NO_TARGET, ability: 'moderation', cityId: city.id })).toBe('science');
     expect(cueOf(s, { type: 'UseAbility', power: 0, ...NO_TARGET, ability: 'holiday' })).toBe('culture');
   });
 

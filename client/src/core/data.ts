@@ -183,6 +183,8 @@ const NEUTRAL_TRAITS: DiplomacyTraits = {
   tribute: 0,
   peace: 0,
   cultureFactor: 1,
+  influenceResist: 1,
+  inciteFactor: 1,
 };
 
 export function diplomacyTraits(character: Character | null): DiplomacyTraits {

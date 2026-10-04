@@ -67,7 +67,7 @@ describe('сохранения', () => {
     expect(migrate({ version: 1 }, 1, steps, 3)).toEqual({ version: 3, a: 1, b: 2 });
     expect(() => migrate({}, 4, steps, 3)).toThrow('более новой версией');
     expect(() => migrate({}, 1, {}, 2)).toThrow('не поддерживается');
-    expect(SAVE_VERSION).toBe(2);
+    expect(SAVE_VERSION).toBe(3);
   });
 
   it('сохранение версии 1 получает специалистов и сооружения', () => {
@@ -79,6 +79,16 @@ describe('сохранения', () => {
     const loaded = readSaveFile(JSON.stringify(old));
     expect(loaded.improvements).toEqual([]);
     expect(loaded.cities[0].specialists).toEqual({ scientist: 0, artisan: 0, merchant: 0 });
+    expect(loaded.powers[0].influence).toEqual([]);
+  });
+
+  it('сохранение версии 2 получает пустое влияние на народы', () => {
+    const s = played(1);
+    const old = JSON.parse(writeSaveFile(s));
+    old.version = 2;
+    for (const p of old.state.powers) delete p.influence;
+    const loaded = readSaveFile(JSON.stringify(old));
+    expect(loaded.powers.every((p) => Array.isArray(p.influence) && p.influence.length === 0)).toBe(true);
   });
 
   it('мусор вместо сохранения — понятная ошибка, а не падение', async () => {

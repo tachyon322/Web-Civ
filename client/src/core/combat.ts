@@ -2,8 +2,7 @@
 // Сила юнита — она же здоровье. Модификаторы перемножаются.
 
 import { activeBuildings } from './buildings';
-import { balance, buildingDef, pathsConfig, terrainDefs, unitDef } from './data';
-import { epochName, epochOf, epochStrengthFactor, techGapBonus } from './epochs';
+import { balance, buildingDef, terrainDefs, unitDef } from './data';
 import { stabilityLevel } from './stability';
 import { log, removeUnit } from './entities';
 import { distance } from './hex';
@@ -83,13 +82,9 @@ function product(mods: Modifier[]): number {
   return mods.reduce((p, m) => p * m.factor, 1);
 }
 
-/** Модификаторы пути и державы: эпоха, технологический разрыв, недовольство. enemy — NONE для боя с городом без хозяина. */
-function powerModifiers(state: GameState, owner: number, enemy: number): Modifier[] {
+/** Модификаторы державы: недовольство. Боевых бонусов у науки нет (ни эпох, ни технологического разрыва). */
+function powerModifiers(state: GameState, owner: number, _enemy: number): Modifier[] {
   const mods: Modifier[] = [];
-  const epoch = epochOf(state.powers[owner]);
-  if (epoch > 0) mods.push({ label: `Эпоха: ${epochName(epoch).toLowerCase()}`, factor: epochStrengthFactor(state, owner) });
-  const gap = enemy >= 0 ? techGapBonus(state, owner, enemy) : 0;
-  if (gap) mods.push({ label: 'Технологический разрыв', factor: 1 + gap });
   const level = stabilityLevel(state.powers[owner].stability);
   if (level.combat !== 1) mods.push({ label: `${level.name}: боевой дух`, factor: level.combat });
   return mods;
@@ -125,7 +120,7 @@ export function defenseModifiers(state: GameState, defender: Unit, attackerType:
   return mods;
 }
 
-/** Слагаемые силы города: уровень, стены, столица, фортификация. */
+/** Слагаемые силы города: уровень, стены, столица. */
 export function cityStrengthParts(city: City): { label: string; value: number }[] {
   const cfgCity = balance.cityDefense;
   const parts = [{ label: 'уровень', value: city.level * cfgCity.strengthPerLevel }];
@@ -134,10 +129,6 @@ export function cityStrengthParts(city: City): { label: string; value: number }[
     if (def.strength) parts.push({ label: def.name.toLowerCase(), value: def.strength });
   }
   if (city.isCapital) parts.push({ label: 'столица', value: cfgCity.capitalStrengthBonus });
-  if (city.fortifyTurns > 0) {
-    const base = parts.reduce((sum, p) => sum + p.value, 0);
-    parts.push({ label: 'фортификация', value: base * (pathsConfig.abilities.fortify.strengthFactor - 1) });
-  }
   return parts;
 }
 

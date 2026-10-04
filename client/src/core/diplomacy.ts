@@ -1,12 +1,12 @@
 // Дипломатия: встречи, объявление войны (с союзниками и вассалами), подарки, сделки и их оценка.
 // Ответ бота считается той же функцией, что и прогноз в интерфейсе, поэтому отказ всегда объясним.
 
-import { deterrentStrike } from './abilities';
 import { transferCity } from './capture';
 import { characterDef, diplomacyConfig, diplomacyTraits, pathsConfig } from './data';
 import { computeIncome, grossGold, type Breakdown } from './economy';
 import { log } from './entities';
 import { range } from './hex';
+import { clearInfluence } from './influence';
 import { nationTrait } from './nations';
 import { canStop } from './pathfinding';
 import {
@@ -138,6 +138,8 @@ export function declareWar(state: GameState, a: number, b: number): WarSides {
   for (const x of sides.attackers) {
     for (const y of [...sides.defenders, ...sides.allies]) if (!atWar(state, x, y)) startWar(state, x, y, a);
   }
+  // Кто нападает, теряет своё культурное влияние на тех, на кого напал.
+  for (const y of [...sides.defenders, ...sides.allies]) clearInfluence(state, y, a);
   const pa = state.powers[a];
   if (sides.betrayed.length) {
     const names = sides.betrayed.map((d) => state.powers[d].name).join(', ');
@@ -158,15 +160,12 @@ export function declareWar(state: GameState, a: number, b: number): WarSides {
     }
   }
   const pb = state.powers[b];
-  // Оружие сдерживания: нападение означает сокрушительный удар по столице агрессора.
-  const armed = [...sides.defenders, ...sides.allies].find((d) => state.powers[d].deterrent);
   logPublic(state, [a, b], `Объявлена война: ${pa.name} — ${pb.name}${sides.betrayed.length ? ' (нарушен договор)' : ''}`);
   const head = principalOf(state, b);
   if (head !== b) logPublic(state, [head, a], `${state.powers[head].name} вступает в войну за своего вассала ${pb.name}`);
   for (const x of sides.allies) {
     logPublic(state, [x, a], `${state.powers[x].name} вступает в войну с державой ${pa.name} на стороне союзника`);
   }
-  if (armed !== undefined) deterrentStrike(state, a, armed);
   return sides;
 }
 

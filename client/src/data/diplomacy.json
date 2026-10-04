@@ -41,7 +41,10 @@
     "sabotage": { "label": "Саботаж против нас", "hold": 10, "fade": 0.5 },
     "refusedPeace": { "label": "Отвергли призыв к миру", "hold": 15, "fade": 0.5 },
     "citySwayed": { "label": "Переманили наш город", "hold": 20, "fade": 0.5 },
-    "seceded": { "label": "Отделились от нас", "hold": 20, "fade": 0.5 }
+    "seceded": { "label": "Отделились от нас", "hold": 20, "fade": 0.5 },
+    "incited": { "label": "Обида", "hold": 10, "fade": 1 },
+    "incitedAgainst": { "label": "Подстрекали против нас", "hold": 15, "fade": 0.5 },
+    "intrigueSeen": { "label": "Плетут интриги", "hold": 10, "fade": 0.5 }
   },
   "events": {
     "betrayalVictim": -40,
@@ -135,7 +138,9 @@
       "joinWar": 10,
       "tribute": -10,
       "peace": -10,
-      "cultureFactor": 1
+      "cultureFactor": 1,
+      "influenceResist": 1,
+      "inciteFactor": 1.2
     },
     "trader": {
       "giftFactor": 1.2,
@@ -148,7 +153,9 @@
       "joinWar": -15,
       "tribute": 0,
       "peace": 10,
-      "cultureFactor": 1
+      "cultureFactor": 1,
+      "influenceResist": 1,
+      "inciteFactor": 0.8
     },
     "diplomat": {
       "giftFactor": 1,
@@ -161,7 +168,9 @@
       "joinWar": -5,
       "tribute": 0,
       "peace": 5,
-      "cultureFactor": 2
+      "cultureFactor": 2,
+      "influenceResist": 1,
+      "inciteFactor": 1
     },
     "isolationist": {
       "giftFactor": 0.3,
@@ -174,7 +183,9 @@
       "joinWar": -20,
       "tribute": -5,
       "peace": 5,
-      "cultureFactor": 0.3
+      "cultureFactor": 0.3,
+      "influenceResist": 2,
+      "inciteFactor": 0.5
     }
   }
 }

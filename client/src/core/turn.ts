@@ -1,13 +1,14 @@
-// Конец хода: доходы и эпохи, выстрелы городов, ополчение, рост, культура, стабильность и отделение,
+// Конец хода: доходы и эпохи, выстрелы городов, ополчение, рост, культура и влияние, стабильность и отделение,
 // дипломатия, восстановление и снабжение юнитов, маршруты, победы.
 
 import { forecastCityShot } from './combat';
 import { balance, unitDef } from './data';
 import { cultureNewTurn, spawnMilitia } from './culture';
+import { influenceNewTurn } from './influence';
 import { diplomacyNewTurn, expireProposals, logPublic, updateContacts } from './diplomacy';
 import { epochMpBonus, epochName, epochOf } from './epochs';
 import { processSecession, refreshAllStability } from './stability';
-import { checkVictory } from './victory';
+import { checkVictory, hegemonyNewTurn } from './victory';
 import { cityGrowthPerTurn, computeIncome } from './economy';
 import { LOG_LIMIT, log, removeUnit } from './entities';
 import { neighbors } from './hex';
@@ -29,7 +30,8 @@ import {
 import { NONE, type GameState, type Unit } from './types';
 import { updateExplored } from './visibility';
 
-function collectIncome(state: GameState): void {
+/** Зачисляет доходы; возвращает доход культуры каждой державы (для влияния). */
+function collectIncome(state: GameState): number[] {
   // Сначала считаем все доходы, потом зачисляем: утечка мозгов и дань зависят от чужих доходов.
   const incomes = state.powers.map((p) => (p.alive ? computeIncome(state, p.id) : null));
   for (const power of state.powers) {
@@ -44,6 +46,7 @@ function collectIncome(state: GameState): void {
     const now = epochOf(power);
     if (now > epoch) logPublic(state, [power.id], `${power.name} вступает в эпоху «${epochName(now)}»`);
   }
+  return incomes.map((income) => Math.max(0, income?.culture.total ?? 0));
 }
 
 /** Каждый город бьёт одного соседнего врага, как лучник: самого слабого (при равенстве — старшего по id). */
@@ -145,13 +148,14 @@ function continueRoutes(state: GameState): void {
 
 /** Переход к следующему ходу для всех держав. */
 export function advanceTurn(state: GameState): void {
-  collectIncome(state);
+  const cultures = collectIncome(state);
   cityShots(state);
   spawnMilitia(state);
   growCities(state);
   expireProposals(state);
   state.turn++;
   cultureNewTurn(state);
+  influenceNewTurn(state, cultures);
   refreshAllStability(state);
   diplomacyNewTurn(state);
   processSecession(state);
@@ -164,6 +168,7 @@ export function advanceTurn(state: GameState): void {
     updateExplored(state, power.id);
     updateContacts(state, power.id);
   }
+  hegemonyNewTurn(state);
   checkVictory(state);
   if (state.log.length > LOG_LIMIT) state.log.splice(0, state.log.length - LOG_LIMIT);
 }

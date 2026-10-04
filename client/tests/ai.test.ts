@@ -355,7 +355,7 @@ describe('пути ботов', () => {
     s.powers[1].scienceTotal = last.science;
     s.powers[1].science = 5000;
     playBotTurn(s, 1);
-    expect(citiesOf(s, 1)[0].project).toEqual({ kind: 'science', stages: 1 });
+    expect(citiesOf(s, 1)[0].project).toMatchObject({ kind: 'science', stages: 1 });
   });
 
   it('при низкой стабильности бот не основывает новых городов сверх бесплатных', () => {

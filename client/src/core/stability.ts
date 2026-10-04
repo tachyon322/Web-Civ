@@ -9,6 +9,7 @@ import type { Breakdown } from './economy';
 import { blankPower, log } from './entities';
 import { epochOf } from './epochs';
 import { distance } from './hex';
+import { hegemonOf } from './influence';
 import { nationTrait } from './nations';
 import { computeNetwork } from './network';
 import { remember, warTurns } from './relations';
@@ -112,6 +113,9 @@ export function computeStability(state: GameState, power: number): Breakdown {
     weariness += v;
   }
   add(b, 'Усталость от войны', Math.max(cfg.warMax, weariness));
+  // Народ против войны, которую держава сама объявила своему культурному гегемону.
+  const hegemon = hegemonOf(state, power);
+  if (hegemon !== NONE && findPact(state, power, hegemon, 'war')?.by === power) add(b, 'Война с культурным гегемоном', cfg.warOnHegemon);
 
   const propaganda = state.powers.reduce(
     (n, o) => n + o.effects.filter((e) => e.kind === 'propaganda' && e.target === power && e.until > state.turn).length,
@@ -143,7 +147,8 @@ export function mostDiscontentCity(state: GameState, power: number): City | null
   let best: City | null = null;
   let bestScore = -Infinity;
   for (const c of citiesOf(state, power)) {
-    if (c.isCapital) continue;
+    // Под модерацией контента город не отделяется.
+    if (c.isCapital || c.moderationTurns > 0) continue;
     const score = (cut.has(c.id) ? 1000 : 0) + (c.founder !== power ? 500 : 0) + (capital ? distance(size, c.tile, capital.tile) : 0);
     if (score > bestScore) {
       best = c;
@@ -230,7 +235,7 @@ export function processSecession(state: GameState): void {
       log(state, p.id, `Мятежи: ${city.name} отделится через ${cfg.secessionWarningTurns} хода, если стабильность не поднимется до ${cfg.secessionBelow}`);
       continue;
     }
-    if (state.turn < p.secession.due) continue;
+    if (state.turn < p.secession.due || warned.moderationTurns > 0) continue;
     p.secession = null;
     secede(state, p.id, warned);
     refreshStability(state, p.id);

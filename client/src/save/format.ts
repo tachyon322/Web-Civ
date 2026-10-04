@@ -57,6 +57,8 @@ export type Migration = (state: Record<string, unknown>) => Record<string, unkno
 /**
  * Миграции формата: ключ — версия, с которой поднимаем.
  * 1 → 2: специалисты в городах и сооружения на особых клетках.
+ * 2 → 3: влияние на народы, культурная гегемония и подстрекательства; Мировое наследие убрано;
+ *        наука: модерация вместо фортификации, саботаж сети вместо саботажа здания, нет оружия сдерживания.
  */
 export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   1: (s) => ({
@@ -64,6 +66,22 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     version: 2,
     improvements: [],
     cities: ((s.cities as Record<string, unknown>[] | undefined) ?? []).map((c) => ({ ...c, specialists: { scientist: 0, artisan: 0, merchant: 0 } })),
+  }),
+  2: (s) => ({
+    ...s,
+    version: 3,
+    intrigues: [],
+    powers: ((s.powers as Record<string, unknown>[] | undefined) ?? []).map(({ deterrent: _d, ...p }) => ({
+      ...p,
+      influence: [],
+      hegemonySince: 0,
+    })),
+    cities: ((s.cities as Record<string, unknown>[] | undefined) ?? []).map(({ fortifyTurns: _f, disabledBuilding: _b, ...c }) => ({
+      ...c,
+      moderationTurns: 0,
+      disabledTurns: 0,
+      project: (c.project as { kind?: string } | null)?.kind === 'culture' ? null : (c.project ?? null),
+    })),
   }),
 };
 

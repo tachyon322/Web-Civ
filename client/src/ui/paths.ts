@@ -3,6 +3,7 @@
 
 import {
   LAST_EPOCH,
+  NONE,
   NO_TARGET,
   PROJECT_STAGES,
   abilityBlocker,
@@ -12,17 +13,24 @@ import {
   epochName,
   epochOf,
   findCity,
+  foreignInfluence,
+  hegemonyLeft,
+  hegemonyNeeded,
+  hegemonOf,
+  hegemonyOver,
+  influenceOf,
   nationTrait,
   buildingPrice,
   nextEpochScience,
   pathsConfig,
   projectCity,
+  projectCooldown,
+  turnsWord,
   projectName,
   stabilityLevel,
   victoryName,
   victoryProgress,
   wonderCity,
-  wondersOwned,
   type AbilityId,
   type Command,
   type GameState,
@@ -46,20 +54,25 @@ const WHERE: Partial<Record<AbilityId, string>> = {
   recon: 'в окне дипломатии',
   propaganda: 'в окне дипломатии',
   callPeace: 'в окне дипломатии',
-  fortify: 'в панели своего города',
+  moderation: 'в панели своего города',
   sabotage: 'в панели чужого города',
   convert: 'в панели вражеского юнита',
+  tour: 'в окне дипломатии',
+  incite: 'в окне дипломатии',
 };
 
 const DESCRIPTIONS: Record<AbilityId, string> = {
   recon: `${pathsConfig.abilities.recon.turns} ходов видны все юниты выбранной державы`,
-  fortify: `город ${pathsConfig.abilities.fortify.turns} хода втрое крепче`,
-  sabotage: `у врага ${pathsConfig.abilities.sabotage.turns} ходов не работает здание`,
-  deterrent: 'нападение на вас — сокрушительный удар по столице агрессора',
+  moderation: `свой город ${pathsConfig.abilities.moderation.turns} ходов не поддаётся культурному давлению и мятежам; на бой не влияет`,
+  sabotage: `в чужом городе ${pathsConfig.abilities.sabotage.turns} ходов не работают храмы, театры, оперы и музеи`,
+  deanon: 'раскрывает все нераскрытые подстрекательства против вас и ваших союзников',
+  jammer: `${pathsConfig.abilities.jammer.turns} ходов никто не может применять к державе гастроли и подстрекательство; здесь — на себя, на другую державу — в окне дипломатии`,
   callPeace: 'мировое мнение требует от агрессора мира; отказ испортит ему отношения со всеми',
   propaganda: `стабильность врага ${pathsConfig.stability.propaganda} на ${pathsConfig.abilities.propaganda.turns} ходов`,
   convert: 'вражеский юнит у вашей границы переходит к вам',
   holiday: `+${pathsConfig.abilities.holiday.stability} к стабильности на ${pathsConfig.abilities.holiday.turns} ходов`,
+  incite: `натравить бота на другую державу: обида и ниже порог войны на ${pathsConfig.abilities.incite.turns} ходов; нужно влияние на него от ${pathsConfig.abilities.incite.minInfluence}%, полная сила — от ${pathsConfig.abilities.incite.fullInfluence}%`,
+  tour: `+${pathsConfig.abilities.tour.gain}% вашего влияния на выбранную державу; цена — ${pathsConfig.abilities.tour.incomeTurns} хода её дохода культуры; повторные в ту же страну слабее`,
 };
 
 type Tab = 'army' | 'science' | 'culture' | 'victory';
@@ -151,14 +164,12 @@ export class PathsWindow {
     const cfg = pathsConfig.epoch;
     const p = this.host.state.powers[this.host.power];
     const trait = nationTrait(this.host.state, this.host.power);
-    const intro = `<div class="intro">Сила армии растёт с эпохой (её двигает наука) и падает, если в державе неспокойно.</div>`;
+    const intro = `<div class="intro">Армия бьёт науку: у учёных нет боевых бонусов. Сила армии падает, если в державе неспокойно.</div>`;
     const epoch = this.card(
       `Эпоха: ${esc(epochName(epochOf(p)))}`,
       `<ul class="facts">
-        <li>Юниты: <b>×${1 + cfg.strengthPerEpoch}</b> к силе за каждую эпоху</li>
         <li>Ход юнитов: <b>+${cfg.mpPerEpoch}</b> за эпоху</li>
         <li>Города без штрафа к стабильности: <b>+${cfg.freeCitiesPerEpoch}</b> за эпоху</li>
-        <li>Технологический разрыв: наука в ${pathsConfig.techGap.minRatio}+ раза больше, чем у врага, даёт до <b>+${pathsConfig.techGap.max * 100}%</b> в бою с ним</li>
       </ul>`,
     );
     const nation = this.card(`Черта нации — ${esc(trait.name)}`, `<div>${esc(trait.description)}</div>`);
@@ -171,15 +182,45 @@ export class PathsWindow {
     const ids = (Object.keys(pathsConfig.abilities) as AbilityId[]).filter((id) => pathsConfig.abilities[id].path === kind);
     const intro =
       kind === 'science'
-        ? 'Наука открывает эпохи, даёт щит от чужой разведки и способности против врагов. Она же — счёт к научной победе.'
-        : 'Культура защищает от пропаганды и переманивания и даёт способности влияния. Она же — счёт к культурной победе.';
+        ? `Наука открывает эпохи и гасит чужую культуру: цифровой занавес режет чужое влияние, давление и утечку мозгов (до −${Math.round(pathsConfig.curtain.max * 100)}%), когда ваша наука выше их культуры. Она же — счёт к научной победе.`
+        : 'Культура защищает от пропаганды и переманивания, даёт влияние на народы и способности. Победа культуры — гегемония над большинством держав.';
     const left =
       kind === 'science'
         ? this.epochCard(p) + this.projectCard('science')
-        : this.projectCard('culture') + this.wondersBlock();
+        : this.influenceCard() + this.wondersBlock();
     const abilities = ids.map((id) => this.abilityCard(id)).join('');
-    return `<div class="intro">${intro} <span class="muted">Каждая трата откладывает финальный проект.</span></div>
+    const spend = kind === 'science' ? ' <span class="muted">Каждая трата откладывает Великий проект.</span>' : '';
+    return `<div class="intro">${intro}${spend}</div>
       <div class="grid2"><div>${this.card('Способности', abilities, `У вас ${icon(kind)} ${p[kind]}`)}</div><div>${left}</div></div>`;
+  }
+
+  /** Ваше влияние на встреченные державы и чьё влияние на вас. */
+  private influenceCard(): string {
+    const { state, power } = this.host;
+    const me = state.powers[power];
+    const rows = me.met
+      .filter((id) => state.powers[id].alive)
+      .map((id) => ({ id, share: influenceOf(state, id, power), hegemon: hegemonOf(state, id) }))
+      .sort((a, b) => b.share - a.share || a.id - b.id)
+      .map(({ id, share, hegemon }) => {
+        const pt = state.powers[id];
+        const who = hegemon === power ? ' <span class="good">гегемон</span>' : hegemon !== NONE ? ` <span class="muted">(гегемон — ${esc(state.powers[hegemon].name)})</span>` : '';
+        return `<div class="row"><span>${flagFor(pt.nationId, pt.color)}${esc(pt.name)}</span><span>${Math.round(share)}%${who}</span></div>`;
+      })
+      .join('');
+    const over = hegemonyOver(state, power).length;
+    const need = hegemonyNeeded(state);
+    const left = hegemonyLeft(state, power);
+    const mine = hegemonOf(state, power);
+    const foreign = Math.round(foreignInfluence(state, power));
+    return this.card(
+      `Влияние на народы`,
+      `${rows || '<div class="muted small">Вы ещё ни с кем не встречались.</div>'}
+       <div class="row"><span>Вы гегемон для</span><span class="${over >= need ? 'good' : ''}">${over} из ${need} нужных</span></div>
+       ${left !== null ? `<div class="row"><span>Культурная победа</span><span class="good">через ${left} ${turnsWord(left)}</span></div>` : ''}
+       <div class="row"><span>Чужое влияние на вас</span><span>${foreign}%${mine !== NONE ? ` · гегемон — ${esc(state.powers[mine].name)}` : ''}</span></div>
+       <div class="muted small">Больше ${pathsConfig.influence.hegemonShare}% — гегемон: к вам лучше относятся, войну вам объявить — минус стабильность. Растёт от торговли, общей границы, чудес и гастролей. Культурная победа — быть гегемоном для ${need} держав и удержать это ${pathsConfig.victory.hegemonyTurns} ходов подряд.</div>`,
+    );
   }
 
   private epochCard(p: GameState['powers'][number]): string {
@@ -197,8 +238,15 @@ export class PathsWindow {
   private abilityCard(id: AbilityId): string {
     const { state, power } = this.host;
     const def = pathsConfig.abilities[id];
-    const use = { ...NO_TARGET, ability: id };
-    const cost = id === 'convert' ? `${pathsConfig.abilities.convert.costPerPerson} за человека` : String(abilityCost(state, power, use));
+    const use = { ...NO_TARGET, ability: id, target: id === 'jammer' ? power : NONE };
+    const cost =
+      id === 'convert'
+        ? `${pathsConfig.abilities.convert.costPerPerson} за человека`
+        : id === 'tour'
+          ? `от ${pathsConfig.abilities.tour.minCost}`
+          : id === 'incite'
+            ? `от ${Math.round(pathsConfig.abilities.incite.cost * pathsConfig.abilities.incite.sizeMin)}`
+          : String(abilityCost(state, power, use));
     let action = `<span class="where">${esc(WHERE[id] ?? '')}</span>`;
     if (!WHERE[id]) {
       const blocker = abilityBlocker(state, power, use);
@@ -210,23 +258,23 @@ export class PathsWindow {
       <div class="muted small">${esc(DESCRIPTIONS[id])}</div></div><div class="a-act">${action}</div></div>`;
   }
 
-  private projectCard(kind: 'science' | 'culture'): string {
+  private projectCard(kind: 'science'): string {
     const { state, power } = this.host;
     const p = state.powers[power];
     const cfg = pathsConfig.projects;
     const city = projectCity(state, power, kind);
     const stages = city?.project?.stages ?? 0;
-    const ok = kind === 'science' ? epochOf(p) >= LAST_EPOCH : wondersOwned(state, power) >= cfg.culture.wonders;
-    const cond =
-      kind === 'science'
-        ? `дойти до эпохи «${esc(epochName(LAST_EPOCH))}»`
-        : `владеть ${cfg.culture.wonders} чудесами света (сейчас ${wondersOwned(state, power)})`;
+    const ok = epochOf(p) >= LAST_EPOCH;
+    const cond = `дойти до эпохи «${esc(epochName(LAST_EPOCH))}»`;
+    const cooldown = cfg[kind].cooldown;
+    const wait = city ? projectCooldown(state, city, kind) : 0;
     const pips = Array.from({ length: PROJECT_STAGES }, (_, i) => `<i class="${i < stages ? 'on' : ''}"></i>`).join('');
     return this.card(
       esc(projectName(kind)),
       `<div class="pips">${pips}<span>${stages}/${PROJECT_STAGES}${city ? ` · ${esc(city.name)}` : ''}</span></div>
        <div class="row"><span>Условие</span><span class="${ok ? 'good' : 'bad'}">${ok ? '✓' : '✗'} ${cond}</span></div>
        <div class="row"><span>Цена этапов</span><span>${cfg[kind].stages.join(' / ')} ${icon(kind)}</span></div>
+       ${cooldown ? `<div class="row"><span>Между этапами</span><span>${wait > 0 ? `ещё ${wait} ${turnsWord(wait)}` : `${cooldown} ${turnsWord(cooldown)}`}</span></div>` : ''}
        <div class="muted small">Этап покупается в панели города, одна покупка за ход. Захватят город — прогресс сгорит.</div>`,
     );
   }
@@ -264,13 +312,13 @@ export class PathsWindow {
         return `<tr><td>${flagFor(p.nationId, p.color)}${esc(p.name)}</td>
           <td>${v.capitals}/${v.capitalsNeeded}</td>
           <td>${Math.round(v.federation * 100)}%${v.vassals ? ` (вассалов ${v.vassals})` : ''}</td>
-          <td>${v.science}/${PROJECT_STAGES}</td><td>${v.culture}/${PROJECT_STAGES}</td></tr>`;
+          <td>${v.science}/${PROJECT_STAGES}</td><td>${v.hegemony}/${v.hegemonyNeeded}${v.hegemonyLeft !== null ? ` · ${v.hegemonyLeft} х.` : ''}</td></tr>`;
       })
       .join('');
     const winner = state.winner;
     return `<div class="intro">Победить можно четырьмя способами. Ваши цифры и цифры известных вам держав:</div>${this.card('Прогресс к победам', `
       ${winner ? `<div class="good">Победа: ${esc(state.powers[winner.power].name)} — ${esc(victoryName(winner.kind))} (ход ${winner.turn})</div>` : ''}
-      <table class="victory"><tr><th></th><th title="Больше половины исходных столиц">Столицы</th><th title="Вы и вассалы — ${fed.federationShare * 100}% уровней городов мира, нужен хотя бы ${fed.federationMinVassals} вассал">Федерация</th><th>Наука</th><th>Культура</th></tr>${rows}</table>`)}`;
+      <table class="victory"><tr><th></th><th title="Больше половины исходных столиц">Столицы</th><th title="Вы и вассалы — ${fed.federationShare * 100}% уровней городов мира, нужен хотя бы ${fed.federationMinVassals} вассал">Федерация</th><th title="Этапы Великого проекта">Наука</th><th title="Гегемон для скольких держав из нужных; при отсчёте — сколько ходов до победы">Культура</th></tr>${rows}</table>`)}`;
   }
 
   private wondersBlock(): string {

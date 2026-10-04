@@ -9,8 +9,9 @@ import { execute, validate, type Command } from '../src/core/commands';
 import { pathsConfig, type AbilityId, type Currency } from '../src/core/data';
 import { NO_TERMS, evaluateDeal } from '../src/core/diplomacy';
 import { citizenPrice, computeIncome } from '../src/core/economy';
-import { epochOf, techGapBonus } from '../src/core/epochs';
+import { epochOf } from '../src/core/epochs';
 import { findCoalitionLeader } from '../src/core/relations';
+import { projectCooldown } from '../src/core/victory';
 import { computeStability, refreshAllStability } from '../src/core/stability';
 import { atWar, citiesOf, cityMaxDurability, citySlots, cityUnitLevel, fitCityToLevel, unitAt, usedSlots } from '../src/core/state';
 import { S_GOLD, S_MARBLE, S_RUINS, T_WATER, NONE, type GameState, type SpecialistKind } from '../src/core/types';
@@ -53,31 +54,21 @@ describe('эпохи', () => {
     expect(epochOf(p)).toBe(1);
   });
 
-  it('эпоха даёт юнитам множитель силы и +1 к ходу', () => {
+  it('эпоха даёт +1 к ходу, но не силу: у науки нет боевых бонусов', () => {
     const s = three();
     declareWar(s, 0, 1);
     const a = addUnit(s, 0, 'warrior', 8, 5, 2);
     addUnit(s, 1, 'warrior', 9, 5, 2);
     const before = forecastAttack(s, a, at(s, 9, 5)).attacker.effective;
     s.powers[0].scienceTotal = epochs[2].science;
+    s.powers[1].scienceTotal = 0;
     const f = forecastAttack(s, a, at(s, 9, 5));
-    expect(f.attacker.modifiers.some((m) => m.label.startsWith('Эпоха'))).toBe(true);
-    expect(f.attacker.effective).toBeGreaterThan(before);
+    expect(f.attacker.modifiers.some((m) => /Эпоха|разрыв/.test(m.label))).toBe(false);
+    expect(f.attacker.effective).toBe(before);
     end(s);
     expect(a.mp).toBe(4 + 2 * pathsConfig.epoch.mpPerEpoch + (s.territory.owner[a.tile] === 0 ? 1 : 0));
   });
 
-  it('технологический разрыв — до +50% против отставшего', () => {
-    const s = three();
-    s.powers[0].scienceTotal = 300;
-    s.powers[1].scienceTotal = 100;
-    expect(techGapBonus(s, 0, 1)).toBe(0.5);
-    s.powers[0].scienceTotal = 120;
-    expect(techGapBonus(s, 0, 1)).toBe(0);
-    s.powers[0].scienceTotal = 200;
-    expect(techGapBonus(s, 0, 1)).toBe(0.25);
-    expect(techGapBonus(s, 1, 0)).toBe(0);
-  });
 });
 
 describe('стабильность', () => {
@@ -438,18 +429,21 @@ describe('способности', () => {
     expect(computeVisible(s, 0)[spy.tile]).toBe(1);
   });
 
-  it('фортификация делает город втрое крепче, саботаж отключает здание', () => {
+  it('саботаж сети отключает храмы, театры и музеи города: их культура и стабильность не идут', () => {
     const s = three();
-    const city = s.cities[0];
-    const str = cityStrength(city);
-    expect(ability(s, 0, 'fortify', { cityId: city.id }).ok).toBe(true);
-    expect(cityStrength(city)).toBe(str * pathsConfig.abilities.fortify.strengthFactor);
     const enemy = s.cities[1];
     enemy.buildings = ['market'];
     s.powers[0].explored[enemy.tile] = 1;
+    expect(ability(s, 0, 'sabotage', { cityId: enemy.id }).ok).toBe(false);
+    enemy.buildings = ['market', 'temple'];
+    const culture = computeIncome(s, 1).culture.total;
     const gold = computeIncome(s, 1).gold.total;
-    expect(ability(s, 0, 'sabotage', { cityId: enemy.id, building: 'market' }).ok).toBe(true);
-    expect(computeIncome(s, 1).gold.total).toBe(gold - 2);
+    expect(ability(s, 0, 'sabotage', { cityId: enemy.id }).ok).toBe(true);
+    expect(computeIncome(s, 1).culture.total).toBeLessThan(culture);
+    expect(computeIncome(s, 1).gold.total).toBe(gold);
+    expect(item(s, 1, 'Храмы')).toBeUndefined();
+    for (let i = 0; i < pathsConfig.abilities.sabotage.turns; i++) end(s);
+    expect(computeIncome(s, 1).culture.total).toBe(culture);
   });
 
   it('переманивание: вражеский юнит у границы переходит к вам', () => {
@@ -475,47 +469,42 @@ describe('способности', () => {
     expect(atWar(s, 1, 2)).toBe(false);
   });
 
-  it('оружие сдерживания: в последней эпохе; нападение — удар по столице агрессора', () => {
-    const s = three();
-    expect(ability(s, 0, 'deterrent').ok).toBe(false);
-    s.powers[0].scienceTotal = epochs[epochs.length - 1].science;
-    expect(ability(s, 0, 'deterrent').ok).toBe(true);
-    const capital = s.cities[1];
-    capital.level = 4;
-    execute(s, { type: 'DeclareWar', power: 1, target: 0 });
-    expect(capital.level).toBe(4 - pathsConfig.abilities.deterrent.levelLoss);
-    expect(capital.durability).toBe(0);
-  });
 });
 
 describe('финальные проекты и победы', () => {
-  it('Великий проект: только в последней эпохе, по этапу за ход; три этапа — победа', () => {
+  it('Великий проект: только в последней эпохе, между этапами откат; три этапа — победа', () => {
     const s = three();
     const city = s.cities[0];
     const cmd: Command = { type: 'BuyProjectStage', power: 0, cityId: city.id, kind: 'science' };
+    const cooldown = pathsConfig.projects.science.cooldown;
+    // Сразу после покупки и все ходы отката следующий этап недоступен.
+    const passCooldown = () => {
+      for (let i = 0; i < cooldown; i++) {
+        expect(validate(s, cmd).ok).toBe(false);
+        end(s);
+      }
+    };
     expect(validate(s, cmd).ok).toBe(false);
     s.powers[0].scienceTotal = epochs[epochs.length - 1].science;
-    s.powers[0].science = 10000;
+    s.powers[0].science = 100000;
     expect(execute(s, cmd).ok).toBe(true);
-    expect(validate(s, cmd).ok).toBe(false);
-    end(s);
+    expect(projectCooldown(s, city, 'science')).toBe(cooldown);
+    passCooldown();
     expect(findCoalitionLeader(s)).toBe(0);
     expect(s.coalitionLeader).toBe(0);
-    execute(s, cmd);
-    end(s);
+    expect(execute(s, cmd).ok).toBe(true);
+    passCooldown();
     expect(execute(s, cmd).ok).toBe(true);
     expect(s.winner).toEqual({ power: 0, kind: 'science', turn: s.turn });
     expect(validate(s, { type: 'EndTurn', power: 0 })).toEqual({ ok: false, reason: 'Партия окончена' });
   });
 
-  it('Мировое наследие требует трёх чудес; при захвате города прогресс сгорает', () => {
+  it('при захвате города прогресс Великого проекта сгорает', () => {
     const s = three();
     const city = s.cities[1];
-    s.powers[1].culture = 10000;
-    const cmd: Command = { type: 'BuyProjectStage', power: 1, cityId: city.id, kind: 'culture' };
-    expect(validate(s, cmd).ok).toBe(false);
-    city.level = 3;
-    city.buildings = ['pyramids', 'gardens', 'colossus'];
+    s.powers[1].science = 10000;
+    s.powers[1].scienceTotal = epochs[epochs.length - 1].science;
+    const cmd: Command = { type: 'BuyProjectStage', power: 1, cityId: city.id, kind: 'science' };
     expect(execute(s, cmd).ok).toBe(true);
     declareWar(s, 0, 1);
     s.powers[0].explored.fill(1);

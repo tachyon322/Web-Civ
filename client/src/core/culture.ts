@@ -6,6 +6,7 @@ import { diplomacyConfig, pathsConfig } from './data';
 import { cedeCity, logPublic } from './diplomacy';
 import { computeIncome } from './economy';
 import { createUnit, log } from './entities';
+import { throughCurtain } from './curtain';
 import { distance } from './hex';
 import { nationTrait } from './nations';
 import { remember } from './relations';
@@ -46,7 +47,8 @@ function revolts(state: GameState): void {
       city.revoltProgress = 0;
       continue;
     }
-    if (garrisoned(state, city)) continue;
+    // Гарнизон и модерация контента сдерживают мятеж.
+    if (garrisoned(state, city) || city.moderationTurns > 0) continue;
     city.revoltProgress++;
     if (city.revoltProgress < cfg.revoltTurns) continue;
     const from = city.owner;
@@ -74,14 +76,17 @@ export function pressureSource(state: GameState, city: City): { power: number; r
   return best;
 }
 
-/** Прирост давления державы за ход (черта нации может его ускорять). */
-export function pressureGain(state: GameState, power: number, ratio: number): number {
+/** Прирост давления державы за ход (черта нации может его ускорять; цифровой занавес владельца города — резать). */
+export function pressureGain(state: GameState, power: number, ratio: number, owner?: number): number {
   const factor = nationTrait(state, power).pressureFactor ?? 1;
-  return Math.round(Math.min(cfg.pressureMax, cfg.pressurePerRatio * (ratio - 1)) * factor * 10) / 10;
+  const raw = Math.min(cfg.pressureMax, cfg.pressurePerRatio * (ratio - 1)) * factor;
+  return Math.round((owner === undefined ? raw : throughCurtain(state, owner, power, raw)) * 10) / 10;
 }
 
 function pressure(state: GameState): void {
   for (const city of [...state.cities]) {
+    // Под модерацией контента давление замирает.
+    if (city.moderationTurns > 0) continue;
     const src = pressureSource(state, city);
     if (!src) {
       city.pressure = Math.max(0, city.pressure - cfg.pressureDecay);
@@ -92,7 +97,7 @@ function pressure(state: GameState): void {
       city.pressureFrom = src.power;
       city.pressure = 0;
     }
-    city.pressure = Math.round((city.pressure + pressureGain(state, src.power, src.ratio)) * 10) / 10;
+    city.pressure = Math.round((city.pressure + pressureGain(state, src.power, src.ratio, city.owner)) * 10) / 10;
     if (city.pressure < cfg.pressureThreshold) continue;
     const from = city.owner;
     city.pressure = 0;
@@ -103,13 +108,13 @@ function pressure(state: GameState): void {
   }
 }
 
-/** Новый ход: мятежи, давление, сроки фортификации и саботажа, истёкшие способности. */
+/** Новый ход: мятежи, давление, сроки модерации и саботажа, истёкшие способности. */
 export function cultureNewTurn(state: GameState): void {
   revolts(state);
   pressure(state);
   for (const city of state.cities) {
-    if (city.fortifyTurns > 0) city.fortifyTurns--;
-    if (city.disabledTurns > 0 && --city.disabledTurns === 0) city.disabledBuilding = null;
+    if (city.moderationTurns > 0) city.moderationTurns--;
+    if (city.disabledTurns > 0) city.disabledTurns--;
   }
   for (const p of state.powers) p.effects = p.effects.filter((e) => e.until > state.turn);
 }

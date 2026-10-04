@@ -95,8 +95,14 @@
     "wonderSaveWeight": 1.2,
     "convertReserve": 30,
     "propagandaReserve": 50,
-    "deterrentReserve": 1.5,
-    "abilityReserve": 40
+    "abilityReserve": 40,
+    "tourReserve": { "diplomat": 20, "trader": 50, "aggressor": 120, "isolationist": 200 },
+    "tourMinGain": 3,
+    "tourSecureShare": 65,
+    "inciteReserve": { "diplomat": 30, "trader": 90, "aggressor": 60, "isolationist": 100000 },
+    "inciteCandidates": 3,
+    "jamShare": 35,
+    "isolationCancelShare": 25
   },
   "economy": {
     "minIncomeAfterPurchase": 1,

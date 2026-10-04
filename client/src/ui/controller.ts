@@ -1161,10 +1161,10 @@ export class GameController {
       html += `</div>`;
     }
     html += this.projectBlock(city);
-    if (city.fortifyTurns <= 0) {
-      const use = { ...NO_TARGET, ability: 'fortify' as const, cityId: city.id };
+    if (city.moderationTurns <= 0) {
+      const use = { ...NO_TARGET, ability: 'moderation' as const, cityId: city.id };
       html += `<h3>Способности</h3><div class="actions">${this.cmdButton(
-        `Фортификация: город втрое крепче на ${pathsConfig.abilities.fortify.turns} хода`,
+        `Модерация контента: ${pathsConfig.abilities.moderation.turns} ходов ни давления, ни мятежей`,
         `${abilityCost(state, this.power, use)} 🔬`,
         { type: 'UseAbility', power: this.power, ...use },
       )}</div>`;
@@ -1172,15 +1172,15 @@ export class GameController {
     return html;
   }
 
-  /** Мятеж, культурное давление, саботаж, фортификация, угроза отделения — для любого известного города. */
+  /** Мятеж, культурное давление, саботаж, модерация, угроза отделения — для любого известного города. */
   private cityStatus(city: City): string {
     const state = this.state;
     const name = (p: number) => state.powers[p].name;
     const cfg = pathsConfig.culture;
     let html = '';
-    if (city.fortifyTurns > 0) html += `<div class="row"><span>Фортификация</span><span>ещё ${city.fortifyTurns} ${turnsWord(city.fortifyTurns)}</span></div>`;
-    if (city.disabledTurns > 0 && city.disabledBuilding) {
-      html += `<div class="row"><span>Саботаж</span><span class="reason">«${esc(buildingDef(city.disabledBuilding).name)}» не работает ${city.disabledTurns} ${turnsWord(city.disabledTurns)}</span></div>`;
+    if (city.moderationTurns > 0) html += `<div class="row"><span>Модерация контента</span><span>ещё ${city.moderationTurns} ${turnsWord(city.moderationTurns)}</span></div>`;
+    if (city.disabledTurns > 0) {
+      html += `<div class="row"><span>Саботаж сети</span><span class="reason">храмы, театры и музеи не работают ${city.disabledTurns} ${turnsWord(city.disabledTurns)}</span></div>`;
     }
     if (city.revoltFrom !== NONE) {
       const left = cfg.revoltTurns - city.revoltProgress;
@@ -1191,7 +1191,7 @@ export class GameController {
     }
     if (city.pressureFrom !== NONE && city.pressure > 0) {
       const src = pressureSource(state, city);
-      const gain = src && src.power === city.pressureFrom ? ` (+${pressureGain(state, src.power, src.ratio)} за ход)` : ' (ослабевает)';
+      const gain = src && src.power === city.pressureFrom ? ` (+${pressureGain(state, src.power, src.ratio, city.owner)} за ход)` : ' (ослабевает)';
       html += `<div class="row" title="Сосед с намного более сильной культурой постепенно склоняет приграничный город к себе"><span>Культурное давление</span><span>${esc(name(city.pressureFrom))}: ${city.pressure} / ${cfg.pressureThreshold}${gain}</span></div>`;
     }
     if (city.project) {
@@ -1208,7 +1208,7 @@ export class GameController {
   private projectBlock(city: City): string {
     const state = this.state;
     let html = '';
-    for (const kind of ['science', 'culture'] as const) {
+    for (const kind of ['science'] as const) {
       const elsewhere = projectCity(state, this.power, kind);
       if (elsewhere && elsewhere.id !== city.id) continue;
       if (city.project && city.project.kind !== kind) continue;
@@ -1216,21 +1216,23 @@ export class GameController {
       if (cost === null) continue;
       const cmd: Command = { type: 'BuyProjectStage', power: this.power, cityId: city.id, kind };
       const stage = (city.project?.kind === kind ? city.project.stages : 0) + 1;
-      html += this.cmdButton(`${projectName(kind)}: этап ${stage} из ${PROJECT_STAGES}`, `${cost} ${kind === 'science' ? '🔬' : '🎭'}`, cmd);
+      html += this.cmdButton(`${projectName(kind)}: этап ${stage} из ${PROJECT_STAGES}`, `${cost} 🔬`, cmd);
     }
     return html ? `<h3>Финальные проекты</h3><div class="actions">${html}</div>` : '';
   }
 
-  /** Саботаж в чужом городе. */
+  /** Саботаж сети в чужом городе. */
   private foreignCityActions(city: City): string {
     const state = this.state;
-    if (!state.powers[this.power].met.includes(city.owner) || !city.buildings.length) return '';
-    let html = '';
-    for (const b of city.buildings) {
-      const use = { ...NO_TARGET, ability: 'sabotage' as const, cityId: city.id, building: b };
-      html += this.cmdButton(`Саботаж: «${buildingDef(b).name}»`, `${abilityCost(state, this.power, use)} 🔬`, { type: 'UseAbility', power: this.power, ...use }, false);
-    }
-    return `<h3>Саботаж (${pathsConfig.abilities.sabotage.turns} ходов)</h3><div class="actions">${html}</div>`;
+    if (!state.powers[this.power].met.includes(city.owner)) return '';
+    const use = { ...NO_TARGET, ability: 'sabotage' as const, cityId: city.id };
+    const html = this.cmdButton(
+      `Саботаж сети: ${pathsConfig.abilities.sabotage.turns} ходов не работают храмы, театры и музеи`,
+      `${abilityCost(state, this.power, use)} 🔬`,
+      { type: 'UseAbility', power: this.power, ...use },
+      false,
+    );
+    return `<h3>Саботаж сети</h3><div class="actions">${html}</div>`;
   }
 
   private renderTileInfo(): void {

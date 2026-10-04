@@ -13,6 +13,7 @@ import {
   characterDef,
   nationTrait,
   citiesOf,
+  cultureIncomes,
   dealBlocker,
   dealText,
   deterrenceIndex,
@@ -22,7 +23,13 @@ import {
   giftForecast,
   grossGold,
   hasPact,
+  hegemonOf,
+  inciteBlocker,
+  inciteStrength,
+  influenceGain,
+  influenceOf,
   opinion,
+  tourGain,
   pendingProposals,
   refusalText,
   shortfallHint,
@@ -39,6 +46,7 @@ import {
   type Proposal,
 } from '../core';
 import { NONE } from '../core/types';
+import { inciteForecast } from '../ai/incite';
 import { esc, showChoice } from './dialog';
 import { escIcons, icon } from './icons';
 import { flagFor } from './flags';
@@ -278,6 +286,7 @@ export class DiplomacyWindow {
     if (wars.length) html += `<div class="row"><span>Воюет с</span><span>${esc(wars.join(', '))}</span></div>`;
     html += `<div class="row" title="${esc(deterrence.items.map((i) => `${i.label}: ${i.value}`).join('\n'))}"><span>Индекс сдерживания</span><span>${deterrence.total} (ваш ${deterrenceIndex(state, power).total})</span></div>
       <div class="row" title="По нему оцениваются подарки: ценность — в ходах дохода получателя"><span>Доход золота</span><span>${grossGold(state, t)} за ход</span></div>
+      ${this.influenceRows()}
       <h3>Их отношение к вам: <span class="${op.total >= 0 ? 'good' : 'bad'}">${signed(op.total)}</span></h3>
       <div class="breakdown">${breakdownLines(op)}</div>`;
 
@@ -294,6 +303,7 @@ export class DiplomacyWindow {
       html += this.tributeBlock();
     }
     html += this.abilitiesBlock();
+    html += this.inciteBlock();
     if (!atWar(state, power, t) && me.suzerain === NONE && pt.suzerain !== power && me.suzerain !== t) {
       html += `<h3>Война</h3><div class="actions">${this.button(`Объявить войну: ${pt.name}`, { type: 'DeclareWar', power, target: t }, {
         confirm: () => this.confirmWar(t),
@@ -303,23 +313,65 @@ export class DiplomacyWindow {
     return html;
   }
 
-  /** Способности против этой державы: разведка, пропаганда, призыв к миру. */
+  /** Влияние на народы: ваше на них (с приростом за ход), их гегемон, их влияние на вас. */
+  private influenceRows(): string {
+    const { state, power } = this.host;
+    const t = this.target;
+    const gain = influenceGain(state, power, t, cultureIncomes(state));
+    const tip = gain.items.length
+      ? [...gain.items.map((i) => `${i.label}: +${i.value}`), `× ${gain.ratio} — соотношение доходов культуры`, ...(gain.curtain ? [`−${Math.round(gain.curtain * 100)}% — их цифровой занавес`] : [])].join('\n')
+      : 'Прироста нет: нужны доход культуры и торговый договор, общая граница или чудеса; во время войны влияние не растёт';
+    const hegemon = hegemonOf(state, t);
+    const hegemonText = hegemon === NONE ? 'нет' : hegemon === power ? 'вы' : state.powers[hegemon].name;
+    const theirs = Math.round(influenceOf(state, power, t));
+    return `<div class="row" title="${esc(tip)}"><span>Ваше влияние на них</span><span>${Math.round(influenceOf(state, t, power))}%${gain.total ? ` (+${gain.total} за ход)` : ''}</span></div>
+      <div class="row"><span>Их культурный гегемон</span><span class="${hegemon === power ? 'good' : ''}">${esc(hegemonText)}</span></div>
+      ${theirs ? `<div class="row"><span>Их влияние на вас</span><span>${theirs}%</span></div>` : ''}`;
+  }
+
+  /** Способности против этой державы: разведка, пропаганда, призыв к миру, гастроли. */
   private abilitiesBlock(): string {
     const { state, power } = this.host;
     const t = this.target;
     const a = pathsConfig.abilities;
-    const use = (ability: 'recon' | 'propaganda' | 'callPeace', victim = NONE) => ({ ...NO_TARGET, ability, target: t, victim });
+    const use = (ability: 'recon' | 'propaganda' | 'callPeace' | 'tour' | 'jammer', victim = NONE) => ({ ...NO_TARGET, ability, target: t, victim });
     const row = (label: string, u: ReturnType<typeof use>, note: string) => {
       const res = a[u.ability].path === 'science' ? '🔬' : '🎭';
       return `<div class="deal">${this.button(`${label} (${abilityCost(state, power, u)} ${res})`, { type: 'UseAbility', power, ...u })}<div class="muted small">${esc(note)}</div></div>`;
     };
     let html = '<h3>Способности</h3>';
     html += row('Разведка', use('recon'), `${a.recon.turns} ходов видны все их юниты`);
+    html += row('Глушилка', use('jammer'), `${a.jammer.turns} ходов никто не может применять к ним гастроли и подстрекательство`);
+    if (!atWar(state, power, t)) {
+      html += row('Гастроли', use('tour'), `ваше влияние на них +${tourGain(state, power, t)}%; повторные в течение ${a.tour.repeatWindow} ходов слабее`);
+    }
     if (!allied(state, power, t)) html += row('Пропаганда', use('propaganda'), `их стабильность ${pathsConfig.stability.propaganda} на ${a.propaganda.turns} ходов; они это запомнят`);
     // Призыв к миру — против войн, которые начала эта держава.
     for (const v of state.powers[t].wars) {
       if (findPact(state, t, v, 'war')?.by !== t) continue;
       html += row(`Призыв к миру с державой ${state.powers[v].name}`, use('callPeace', v), 'откажутся — испортят отношения со всеми');
+    }
+    return html;
+  }
+
+  /** Подстрекательство: натравить эту державу (бота) на другую. Применить можно только при положительном прогнозе. */
+  private inciteBlock(): string {
+    const { state, power } = this.host;
+    const t = this.target;
+    const pt = state.powers[t];
+    if (pt.isHuman) return '';
+    const cfg = pathsConfig.abilities.incite;
+    const victims = state.powers.filter((v) => v.alive && v.id !== t && v.id !== power && state.powers[power].met.includes(v.id) && pt.met.includes(v.id));
+    const strength = inciteStrength(state, power, t);
+    let html = `<h3>Подстрекательство</h3><div class="muted small">Обида на цель и порог войны ниже на ${cfg.turns} ходов. Нужно влияние на них от ${cfg.minInfluence}%, полная сила — от ${cfg.fullInfluence}%${strength ? ` (сейчас сила ${Math.round(strength * 100)}%)` : ''}. Если культура цели выше вашей — она узнает, кто это сделал.</div>`;
+    if (!victims.length) return html + '<div class="muted small">Им не на кого: общих знакомых нет.</div>';
+    for (const v of victims) {
+      const use = { ...NO_TARGET, ability: 'incite' as const, target: t, victim: v.id };
+      const rule = inciteBlocker(state, power, t, v.id);
+      const f = rule ? null : inciteForecast(state, power, t, v.id);
+      const blocker = rule ?? (f && !f.ok ? 'Прогноз: ничего не изменится' : null);
+      const note = rule ?? `${f!.text}.${f!.exposed ? ` ${v.name} узнает, что это вы.` : ' Никто не узнает.'}`;
+      html += `<div class="deal">${this.button(`Натравить на державу ${v.name} (${abilityCost(state, power, use)} 🎭)`, { type: 'UseAbility', power, ...use }, { blocker })}<div class="muted small ${f?.ok ? 'good' : ''}">${esc(note)}</div></div>`;
     }
     return html;
   }

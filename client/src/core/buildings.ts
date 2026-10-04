@@ -9,10 +9,11 @@ import { nationTrait } from './nations';
 import { citiesOf, cityTiles, citySlots, isCoastal, usedSlots } from './state';
 import { S_MARBLE, type City, type GameState } from './types';
 
-/** Работающие здания города (без отключённого саботажем). */
+/** Работающие здания города (без культурных зданий, отключённых саботажем сети). */
 export function activeBuildings(city: City): string[] {
-  if (city.disabledTurns <= 0 || !city.disabledBuilding) return city.buildings;
-  return city.buildings.filter((b) => b !== city.disabledBuilding);
+  if (city.disabledTurns <= 0) return city.buildings;
+  const off = pathsConfig.abilities.sabotage.buildings as string[];
+  return city.buildings.filter((b) => !off.includes(b));
 }
 
 /** Кто в мире уже построил это чудо (город) или null. */
@@ -112,5 +113,4 @@ export function wondersOwned(state: GameState, power: number): number {
 /** Державные здания пропадают, когда город переходит к другой державе. */
 export function dropNationalBuildings(city: City): void {
   city.buildings = city.buildings.filter((b) => !buildingDef(b).national);
-  if (city.disabledBuilding && !city.buildings.includes(city.disabledBuilding)) city.disabledBuilding = null;
 }

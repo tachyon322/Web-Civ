@@ -42,6 +42,13 @@ it.skipIf(!env.SIM)('симуляция партии ботов', () => {
     console.log(`  Торговля: ${pacts('trade')}`);
     console.log(`  Союзы: ${pacts('alliance')}`);
     console.log(`  Перемирия: ${pacts('truce')}`);
+    const heg = s.powers.filter((p) => p.alive).map((p) => {
+      const top = p.influence.reduce((b, v, i) => ((v ?? 0) > (p.influence[b] ?? 0) ? i : b), 0);
+      return `${p.name}: ${s.powers[top]?.name ?? '—'} ${(p.influence[top] ?? 0).toFixed(0)}%`;
+    });
+    console.log(`  Влияние (главное): ${heg.join(', ')}`);
+    const count = (re: RegExp) => s.log.filter((x) => re.test(x.text)).length;
+    console.log(`  Гастроли ${count(/^Гастроли/)}, подстрекательства ${count(/^Подстрекательство/)}, раскрыто ${count(/^Раскрыта интрига/)}, глушилки ${count(/ставит глушилку/)}, деаноны ${count(/^Деанон/)}`);
   };
   for (let t = 0; t < turns && !s.winner; t++) {
     const t0 = performance.now();

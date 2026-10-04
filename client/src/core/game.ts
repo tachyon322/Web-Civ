@@ -44,6 +44,7 @@ export function newGame(settings: NewGameSettings): GameState {
     units: [],
     pacts: [],
     proposals: [],
+    intrigues: [],
     coalitionLeader: NONE,
     winner: null,
     improvements: [],

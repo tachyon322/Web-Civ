@@ -2,6 +2,7 @@
 
 import { activeBuildings, buildingPrice } from './buildings';
 import { balance, buildingDef, buildings, diplomacyConfig, pathsConfig, specialistDefs, specialYields } from './data';
+import { throughCurtain } from './curtain';
 import { improvementFor } from './improvements';
 import { nationTrait } from './nations';
 import { borderTiles } from './relations';
@@ -107,24 +108,24 @@ export function brainDrainTakers(state: GameState, victim: number): number[] {
     .map((p) => p.id);
 }
 
-/** Сколько науки уходит от victim к каждому из забирающих. */
-function brainDrainEach(state: GameState, victim: number, takers: number): number {
+/** Сколько науки уходит от victim к забирающему taker (цифровой занавес victim режет утечку). */
+function brainDrainEach(state: GameState, victim: number, takers: number[], taker: number): number {
   const cfg = pathsConfig.culture;
-  if (!takers) return 0;
-  const share = Math.min(cfg.brainDrainMaxShare, cfg.brainDrainShare * takers) / takers;
-  return Math.floor(Math.max(0, production(state, victim).science.total) * share);
+  if (!takers.length) return 0;
+  const share = Math.min(cfg.brainDrainMaxShare, cfg.brainDrainShare * takers.length) / takers.length;
+  return Math.floor(throughCurtain(state, victim, taker, Math.max(0, production(state, victim).science.total) * share));
 }
 
 /** Доход без дани: производство, утечка мозгов, торговля, содержание. */
 function baseIncome(state: GameState, power: number): Income {
   const income = production(state, power);
   const takers = brainDrainTakers(state, power);
-  add(income.science, 'Утечка мозгов', -brainDrainEach(state, power, takers.length) * takers.length);
+  add(income.science, 'Утечка мозгов', -takers.reduce((sum, t) => sum + brainDrainEach(state, power, takers, t), 0));
   let gained = 0;
   for (const other of state.powers) {
     if (!other.alive || other.id === power || state.powers[power].cultureTotal <= other.cultureTotal) continue;
     const t = brainDrainTakers(state, other.id);
-    if (t.includes(power)) gained += brainDrainEach(state, other.id, t.length);
+    if (t.includes(power)) gained += brainDrainEach(state, other.id, t, power);
   }
   add(income.science, 'Утечка мозгов к нам', gained);
   add(income.gold, 'Торговые договоры', tradeGold(state, power));

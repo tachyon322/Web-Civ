@@ -23,6 +23,7 @@ export function blankState(width = 12, height = 10, powers = 2): GameState {
     units: [],
     pacts: [],
     proposals: [],
+    intrigues: [],
     coalitionLeader: NONE,
     winner: null,
     improvements: [],
