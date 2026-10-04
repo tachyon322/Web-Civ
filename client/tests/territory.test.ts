@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { execute } from '../src/core/commands';
+import { computeIncome } from '../src/core/economy';
 import { cityTiles } from '../src/core/state';
 import { checkClaim } from '../src/core/territory';
 import { NONE, T_WATER } from '../src/core/types';
@@ -66,5 +67,29 @@ describe('разметка земли', () => {
     a.level = 3;
     addCity(s, 1, 6, 5, true);
     expect(checkClaim(s, 0, at(s, 5, 5)).ok).toBe(false);
+  });
+});
+
+describe('золото с земли', () => {
+  it('каждая своя клетка суши даёт +1 золото', () => {
+    const s = blankState(16, 10);
+    const city = addCity(s, 0, 5, 5, true);
+    city.level = 2; // лимит 10 — есть место для новой клетки
+    const land = () => computeIncome(s, 0).gold.items.find((i) => i.label === 'Земля')?.value;
+    expect(land()).toBe(cityTiles(s, city.id).length);
+    const before = land()!;
+    const u = addCitizen(s, 0, 6, 5);
+    // Житель размечает нейтральную клетку у границы — она сразу приносит золото.
+    expect(execute(s, { type: 'Move', power: 0, unitId: u.id, target: at(s, 7, 5) }).ok).toBe(true);
+    expect(land()).toBeGreaterThan(before);
+  });
+
+  it('вода золота не даёт', () => {
+    const s = blankState(16, 10);
+    s.map.terrain[at(s, 6, 5)] = T_WATER;
+    const city = addCity(s, 0, 5, 5, true);
+    const land = computeIncome(s, 0).gold.items.find((i) => i.label === 'Земля')!.value;
+    expect(land).toBe(cityTiles(s, city.id).length);
+    expect(cityTiles(s, city.id)).not.toContain(at(s, 6, 5));
   });
 });
