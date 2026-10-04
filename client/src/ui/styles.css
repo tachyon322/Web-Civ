@@ -381,16 +381,76 @@ button .price {
   #log {
     display: none;
   }
+  #topbar {
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    padding: 4px 8px;
+    font-size: 13px;
+  }
+  #topbar .lbl,
+  #topbar .turn,
+  #topbar .spacer {
+    display: none;
+  }
+  #topbar button {
+    padding: 3px 8px;
+  }
+  #panel .note,
+  #panel .sub {
+    display: none;
+  }
+  #panel .row {
+    padding: 0;
+  }
+  #panel h3,
+  #panel .section {
+    margin: 6px 0 2px;
+  }
   #panel {
-    width: calc(100vw - 16px);
-    max-height: 40vh;
+    left: 4px;
+    bottom: 4px;
+    width: calc(100vw - 8px);
+    max-height: 20vh;
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+  #panel h2 {
+    font-size: 15px;
+  }
+  #panel .sub {
+    margin-bottom: 4px;
   }
   #corner {
     bottom: auto;
-    top: 56px;
+    top: 76px;
+    right: 4px;
+    padding: 4px;
+    gap: 4px;
+  }
+  #endturn {
+    padding: 6px;
   }
   #minimap {
-    width: 160px;
+    width: 110px;
+    height: 55px;
+  }
+  #tileinfo {
+    display: none;
+  }
+  #forecast {
+    top: 48px;
+    min-width: 0;
+    width: calc(100vw - 130px);
+    left: 4px;
+    transform: none;
+    font-size: 12px;
+  }
+  #toast {
+    bottom: 36vh;
+    max-width: calc(100vw - 16px);
   }
 }
 

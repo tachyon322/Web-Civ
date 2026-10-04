@@ -859,23 +859,23 @@ export class GameController {
     const level = stabilityLevel(p.stability);
     const stabilityTitle = `Стабильность: ${p.stability} — ${level.name}\n\n${stab.items.map((i) => `${i.label}: ${signed(i.value)}`).join('\n')}\n\nПодробнее — в окне «Пути» (P)`;
     this.ui.topbar.innerHTML = `
-      <span class="power">${flagFor(p.nationId, p.color)}${esc(p.name)}</span>
+      <span class="power">${flagFor(p.nationId, p.color)}<span class="lbl">${esc(p.name)}</span></span>
       ${res('gold', p.gold)}
       ${res('science', p.science)}
       ${res('culture', p.culture)}
       <span class="res ${landTiles(state, this.power) >= landLimit(state, this.power) ? 'full' : ''}" title="${esc(landTitle)}">${icon('land')} <b>${landTiles(state, this.power)}</b><span class="delta">/ ${landLimit(state, this.power)}</span></span>
       <span class="res" title="${esc(epochTitle)}">${icon('epoch')} <b>${esc(epochName(epoch))}</b></span>
-      <span class="res stability ${level.combat !== 1 ? 'bad' : ''}" title="${esc(stabilityTitle)}">${icon('stability')} <b>${p.stability}</b> ${esc(level.name.toLowerCase())}</span>
+      <span class="res stability ${level.combat !== 1 ? 'bad' : ''}" title="${esc(stabilityTitle)}">${icon('stability')} <b>${p.stability}</b> <span class="lbl">${esc(level.name.toLowerCase())}</span></span>
       <span class="res" title="${esc(deterrenceTitle('Индекс сдерживания: насколько дорого на вас напасть. Боты нападают, если их армия сильнее.', deterrence))}">${icon('deterrence')} <b>${fmt(deterrence.total)}</b></span>
       ${wars.length ? `<span class="wars" title="Нажмите на державу — сводка войны">${icon('war')} Война: ${p.wars.map((w) => `<a class="war-link" data-war="${w}">${esc(state.powers[w].name)}</a>`).join(', ')}</span>` : ''}
       ${p.suzerain !== NONE ? `<span class="wars" title="Вассал платит дань, воюет на стороне сюзерена и не заключает союзов">Вассал державы ${esc(state.powers[p.suzerain].name)}</span>` : ''}
       ${state.coalitionLeader !== NONE ? `<span class="wars" title="Держава близка к победе: остальные собирают коалицию">${icon('warning')} Лидер: ${esc(state.powers[state.coalitionLeader].name)}</span>` : ''}
       ${p.secession ? `<span class="wars" title="Стабильность ниже ${pathsConfig.stability.secessionBelow}: самый недовольный город отделится">${icon('warning')} Мятежи: ${esc(findCity(state, p.secession.cityId)?.name ?? '')} через ${Math.max(0, p.secession.due - state.turn)} х.</span>` : ''}
       <span class="spacer"></span>
-      <button data-action="paths" title="Эпоха, стабильность, способности, проекты и победы (P)">${icon('paths')} Пути</button>
-      <button data-action="diplomacy" title="Отношения, договоры, мир и войны (D)">${icon('diplomacy')} Дипломатия${pending ? ` · ${icon('proposal')} ${pending}` : ''}</button>
+      <button data-action="paths" title="Эпоха, стабильность, способности, проекты и победы (P)">${icon('paths')}<span class="lbl"> Пути</span></button>
+      <button data-action="diplomacy" title="Отношения, договоры, мир и войны (D)">${icon('diplomacy')}<span class="lbl"> Дипломатия</span>${pending ? ` · ${icon('proposal')} ${pending}` : ''}</button>
       <span class="turn">Ход ${state.turn} · сид ${state.settings.seed}</span>
-      <button data-action="menu" title="Сохранить, загрузить, настройки, новая партия">${icon('menu')} Меню</button>`;
+      <button data-action="menu" title="Сохранить, загрузить, настройки, новая партия">${icon('menu')}<span class="lbl"> Меню</span></button>`;
   }
 
   private renderLog(): void {
