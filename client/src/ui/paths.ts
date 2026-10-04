@@ -62,7 +62,10 @@ const DESCRIPTIONS: Record<AbilityId, string> = {
   holiday: `+${pathsConfig.abilities.holiday.stability} к стабильности на ${pathsConfig.abilities.holiday.turns} ходов`,
 };
 
+type Tab = 'army' | 'science' | 'culture' | 'victory';
+
 export class PathsWindow {
+  private tab: Tab = 'army';
   private root: HTMLElement | null = null;
   private actions: Command[] = [];
   private onKey = (e: KeyboardEvent) => {
@@ -106,6 +109,12 @@ export class PathsWindow {
       this.close();
       return;
     }
+    const tab = el.closest<HTMLElement>('[data-tab]');
+    if (tab) {
+      this.tab = tab.dataset.tab as Tab;
+      this.render();
+      return;
+    }
     const btn = el.closest<HTMLButtonElement>('button[data-i]');
     if (!btn || btn.disabled) return;
     if (this.host.dispatch(this.actions[Number(btn.dataset.i)])) this.render();
@@ -114,29 +123,112 @@ export class PathsWindow {
   private render(): void {
     if (!this.root) return;
     this.actions = [];
+    const p = this.host.state.powers[this.host.power];
+    const tabs: [Tab, string, string][] = [
+      ['army', 'Армия', 'paths'],
+      ['science', 'Наука', 'science'],
+      ['culture', 'Культура', 'culture'],
+      ['victory', 'Победы', 'paths'],
+    ];
+    const body = { army: () => this.armyTab(), science: () => this.pathTab('science'), culture: () => this.pathTab('culture'), victory: () => this.victoryBlock() }[this.tab]();
     this.root.innerHTML = `
       <div class="panel modal diplo paths">
-        <div class="diplo-head"><h1>Пути: армия, наука, культура</h1><button class="close" title="Закрыть (Esc)">✕</button></div>
-        <div class="detail columns">
-          <div>${this.epochBlock()}${this.stabilityBlock()}</div>
-          <div>${this.abilitiesBlock()}${this.projectsBlock()}${this.victoryBlock()}${this.wondersBlock()}</div>
-        </div>
+        <div class="diplo-head"><h1>Пути развития</h1>
+          <span class="purse">${icon('science')} ${p.science} &nbsp; ${icon('culture')} ${p.culture}</span>
+          <button class="close" title="Закрыть (Esc)">✕</button></div>
+        <div class="tabs">${tabs
+          .map(([id, name, ic]) => `<button class="tab ${id === this.tab ? 'active' : ''}" data-tab="${id}">${icon(ic as 'science')} ${name}</button>`)
+          .join('')}</div>
+        <div class="tab-body">${body}</div>
       </div>`;
   }
 
-  private epochBlock(): string {
+  private card(title: string, inner: string, hint = ''): string {
+    return `<section class="card"><h3>${title}</h3>${hint ? `<div class="muted small hint">${hint}</div>` : ''}${inner}</section>`;
+  }
+
+  private armyTab(): string {
+    const cfg = pathsConfig.epoch;
     const p = this.host.state.powers[this.host.power];
+    const trait = nationTrait(this.host.state, this.host.power);
+    const intro = `<div class="intro">Сила армии растёт с эпохой (её двигает наука) и падает, если в державе неспокойно.</div>`;
+    const epoch = this.card(
+      `Эпоха: ${esc(epochName(epochOf(p)))}`,
+      `<ul class="facts">
+        <li>Юниты: <b>×${1 + cfg.strengthPerEpoch}</b> к силе за каждую эпоху</li>
+        <li>Ход юнитов: <b>+${cfg.mpPerEpoch}</b> за эпоху</li>
+        <li>Города без штрафа к стабильности: <b>+${cfg.freeCitiesPerEpoch}</b> за эпоху</li>
+        <li>Технологический разрыв: наука в ${pathsConfig.techGap.minRatio}+ раза больше, чем у врага, даёт до <b>+${pathsConfig.techGap.max * 100}%</b> в бою с ним</li>
+      </ul>`,
+    );
+    const nation = this.card(`Черта нации — ${esc(trait.name)}`, `<div>${esc(trait.description)}</div>`);
+    return `${intro}<div class="grid2"><div>${epoch}${nation}</div><div>${this.stabilityBlock()}</div></div>`;
+  }
+
+  private pathTab(kind: 'science' | 'culture'): string {
+    const { state, power } = this.host;
+    const p = state.powers[power];
+    const ids = (Object.keys(pathsConfig.abilities) as AbilityId[]).filter((id) => pathsConfig.abilities[id].path === kind);
+    const intro =
+      kind === 'science'
+        ? 'Наука открывает эпохи, даёт щит от чужой разведки и способности против врагов. Она же — счёт к научной победе.'
+        : 'Культура защищает от пропаганды и переманивания и даёт способности влияния. Она же — счёт к культурной победе.';
+    const left =
+      kind === 'science'
+        ? this.epochCard(p) + this.projectCard('science')
+        : this.projectCard('culture') + this.wondersBlock();
+    const abilities = ids.map((id) => this.abilityCard(id)).join('');
+    return `<div class="intro">${intro} <span class="muted">Каждая трата откладывает финальный проект.</span></div>
+      <div class="grid2"><div>${this.card('Способности', abilities, `У вас ${icon(kind)} ${p[kind]}`)}</div><div>${left}</div></div>`;
+  }
+
+  private epochCard(p: GameState['powers'][number]): string {
     const e = epochOf(p);
     const next = nextEpochScience(p);
-    const cfg = pathsConfig.epoch;
     const pct = next ? Math.min(100, (p.scienceTotal / next) * 100) : 100;
-    const trait = nationTrait(this.host.state, this.host.power);
-    return `<div class="row"><span>Черта нации — ${esc(trait.name)}</span><span>${esc(trait.description)}</span></div>
-      <h3>Эпоха: ${esc(epochName(e))}</h3>
-      <div class="row"><span>Заработано науки</span><span>${p.scienceTotal}${next ? ` / ${next} до эпохи «${esc(epochName(e + 1))}»` : ' — последняя эпоха'}</span></div>
-      <div class="bar"><div style="width:${pct}%"></div></div>
-      <div class="muted small">Каждая эпоха: юнитам ×${1 + cfg.strengthPerEpoch} к силе и +${cfg.mpPerEpoch} к ходу, +${cfg.freeCitiesPerEpoch} город без штрафа к стабильности, новые чудеса света. Трата науки эпоху не отнимает.
-      Технологический разрыв: если ваша наука в ${pathsConfig.techGap.minRatio}+ раза больше, чем у врага, — до +${pathsConfig.techGap.max * 100}% в бою с ним.</div>`;
+    return this.card(
+      `Эпоха: ${esc(epochName(e))}`,
+      `<div class="bar"><div style="width:${pct}%"></div></div>
+       <div class="row"><span>Заработано науки</span><span>${p.scienceTotal}${next ? ` / ${next}` : ''}</span></div>
+       <div class="muted small">${next ? `Следующая эпоха — «${esc(epochName(e + 1))}». ` : 'Последняя эпоха. '}Трата науки эпоху не отнимает.</div>`,
+    );
+  }
+
+  private abilityCard(id: AbilityId): string {
+    const { state, power } = this.host;
+    const def = pathsConfig.abilities[id];
+    const use = { ...NO_TARGET, ability: id };
+    const cost = id === 'convert' ? `${pathsConfig.abilities.convert.costPerPerson} за человека` : String(abilityCost(state, power, use));
+    let action = `<span class="where">${esc(WHERE[id] ?? '')}</span>`;
+    if (!WHERE[id]) {
+      const blocker = abilityBlocker(state, power, use);
+      const i = this.actions.push({ type: 'UseAbility', power, ...use }) - 1;
+      action = `<button data-i="${i}" ${blocker ? 'disabled' : ''} title="${esc(blocker ?? '')}">Применить</button>`;
+      if (blocker) action += `<div class="reason">${esc(blocker)}</div>`;
+    }
+    return `<div class="ability"><div class="a-main"><div><b>${esc(def.name)}</b> <span class="cost">${icon(def.path === 'science' ? 'science' : 'culture')} ${esc(cost)}</span></div>
+      <div class="muted small">${esc(DESCRIPTIONS[id])}</div></div><div class="a-act">${action}</div></div>`;
+  }
+
+  private projectCard(kind: 'science' | 'culture'): string {
+    const { state, power } = this.host;
+    const p = state.powers[power];
+    const cfg = pathsConfig.projects;
+    const city = projectCity(state, power, kind);
+    const stages = city?.project?.stages ?? 0;
+    const ok = kind === 'science' ? epochOf(p) >= LAST_EPOCH : wondersOwned(state, power) >= cfg.culture.wonders;
+    const cond =
+      kind === 'science'
+        ? `дойти до эпохи «${esc(epochName(LAST_EPOCH))}»`
+        : `владеть ${cfg.culture.wonders} чудесами света (сейчас ${wondersOwned(state, power)})`;
+    const pips = Array.from({ length: PROJECT_STAGES }, (_, i) => `<i class="${i < stages ? 'on' : ''}"></i>`).join('');
+    return this.card(
+      esc(projectName(kind)),
+      `<div class="pips">${pips}<span>${stages}/${PROJECT_STAGES}${city ? ` · ${esc(city.name)}` : ''}</span></div>
+       <div class="row"><span>Условие</span><span class="${ok ? 'good' : 'bad'}">${ok ? '✓' : '✗'} ${cond}</span></div>
+       <div class="row"><span>Цена этапов</span><span>${cfg[kind].stages.join(' / ')} ${icon(kind)}</span></div>
+       <div class="muted small">Этап покупается в панели города, одна покупка за ход. Захватят город — прогресс сгорит.</div>`,
+    );
   }
 
   private stabilityBlock(): string {
@@ -156,50 +248,9 @@ export class PathsWindow {
       })
       .join('');
     const warning = p.secession ? findCity(state, p.secession.cityId) : undefined;
-    return `<h3>Стабильность: ${b.total} — ${esc(level.name)}</h3>
-      ${warning ? `<div class="reason">${esc(warning.name)} отделится через ${Math.max(0, p.secession!.due - state.turn)} х., если стабильность не поднимется до ${pathsConfig.stability.secessionBelow}</div>` : ''}
+    return this.card(`Стабильность: ${b.total} — ${esc(level.name)}`, `${warning ? `<div class="reason">${esc(warning.name)} отделится через ${Math.max(0, p.secession!.due - state.turn)} х., если стабильность не поднимется до ${pathsConfig.stability.secessionBelow}</div>` : ''}
       <div class="breakdown">${rows}</div>
-      <div class="levels small">${levels}</div>`;
-  }
-
-  private abilitiesBlock(): string {
-    const { state, power } = this.host;
-    const p = state.powers[power];
-    const list = (Object.keys(pathsConfig.abilities) as AbilityId[]).map((id) => {
-      const def = pathsConfig.abilities[id];
-      const res = icon(def.path === 'science' ? 'science' : 'culture');
-      const use = { ...NO_TARGET, ability: id };
-      const cost = id === 'convert' ? `${pathsConfig.abilities.convert.costPerPerson} за человека` : String(abilityCost(state, power, use));
-      let action = `<span class="muted small">${esc(WHERE[id] ?? '')}</span>`;
-      if (!WHERE[id]) {
-        const cmd: Command = { type: 'UseAbility', power, ...use };
-        const blocker = abilityBlocker(state, power, use);
-        const i = this.actions.push(cmd) - 1;
-        action = `<button data-i="${i}" ${blocker ? 'disabled' : ''} title="${esc(blocker ?? '')}">Применить</button>${blocker ? `<div class="reason">${esc(blocker)}</div>` : ''}`;
-      }
-      return `<div class="ability"><div><b>${esc(def.name)}</b> <span class="muted">${res} ${esc(cost)}</span><div class="muted small">${esc(DESCRIPTIONS[id])}</div></div><div>${action}</div></div>`;
-    });
-    return `<h3>Способности <span class="muted small">(у вас ${icon('science')} ${p.science}, ${icon('culture')} ${p.culture})</span></h3>
-      <div class="muted small">Наука и культура — и счёт к победе, и валюта: каждая трата отодвигает финальный проект.</div>
-      ${list.join('')}`;
-  }
-
-  private projectsBlock(): string {
-    const { state, power } = this.host;
-    const p = state.powers[power];
-    const cfg = pathsConfig.projects;
-    const row = (kind: 'science' | 'culture') => {
-      const city = projectCity(state, power, kind);
-      const stages = city?.project?.stages ?? 0;
-      const cond =
-        kind === 'science'
-          ? `эпоха «${epochName(LAST_EPOCH)}» (${epochOf(p) >= LAST_EPOCH ? 'есть' : 'нет'})`
-          : `${cfg.culture.wonders} чуда света (у вас ${wondersOwned(state, power)})`;
-      return `<div class="row"><span>${esc(projectName(kind))}: ${stages}/${PROJECT_STAGES}${city ? ` в городе ${esc(city.name)}` : ''}</span>
-        <span>этапы ${cfg[kind].stages.join(' / ')} ${icon(kind)}</span></div>
-        <div class="muted small">Условие: ${esc(cond)}. Этап выкупается в панели города (одна покупка за ход); если город захватят — прогресс сгорает.</div>`;
-    };
-    return `<h3>Финальные проекты</h3>${row('science')}${row('culture')}`;
+      <div class="levels small">${levels}</div>`, 'Из чего сложилась и что она даёт.');
   }
 
   private victoryBlock(): string {
@@ -217,9 +268,9 @@ export class PathsWindow {
       })
       .join('');
     const winner = state.winner;
-    return `<h3>Победы</h3>
+    return `<div class="intro">Победить можно четырьмя способами. Ваши цифры и цифры известных вам держав:</div>${this.card('Прогресс к победам', `
       ${winner ? `<div class="good">Победа: ${esc(state.powers[winner.power].name)} — ${esc(victoryName(winner.kind))} (ход ${winner.turn})</div>` : ''}
-      <table class="victory"><tr><th></th><th title="Больше половины исходных столиц">Столицы</th><th title="Вы и вассалы — ${fed.federationShare * 100}% уровней городов мира, нужен хотя бы ${fed.federationMinVassals} вассал">Федерация</th><th>Наука</th><th>Культура</th></tr>${rows}</table>`;
+      <table class="victory"><tr><th></th><th title="Больше половины исходных столиц">Столицы</th><th title="Вы и вассалы — ${fed.federationShare * 100}% уровней городов мира, нужен хотя бы ${fed.federationMinVassals} вассал">Федерация</th><th>Наука</th><th>Культура</th></tr>${rows}</table>`)}`;
   }
 
   private wondersBlock(): string {
@@ -234,6 +285,6 @@ export class PathsWindow {
         return `<div class="row"><span>${esc(b.name)} <span class="muted small">с эпохи «${esc(epochName(b.epoch ?? 0))}», ${price}</span></span><span>${esc(where)}</span></div>`;
       })
       .join('');
-    return `<h3>Чудеса света</h3><div class="muted small">Одно на весь мир, слот не занимает; в городе с мрамором на ${pathsConfig.culture.wonderMarbleDiscount * 100}% дешевле.</div>${rows}`;
+    return this.card('Чудеса света', rows, `Одно на весь мир, слот не занимает; в городе с мрамором на ${pathsConfig.culture.wonderMarbleDiscount * 100}% дешевле.`);
   }
 }

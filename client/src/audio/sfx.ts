@@ -8,7 +8,6 @@ import attack2Url from './samples/attack-2.mp3';
 import attack3Url from './samples/attack-3.mp3';
 import clickUrl from './samples/click.mp3';
 import cultureUrl from './samples/culture.mp3';
-import goldUrl from './samples/gold.mp3';
 import sabotageUrl from './samples/sabotage.mp3';
 import scienceUrl from './samples/science.mp3';
 
@@ -204,7 +203,7 @@ const CUES: Record<Cue, (m: Mix) => void> = {
     pluck(m, 83, 0.09, 0.1);
   },
   coins: (m) => {
-    [2100, 2500, 2300, 2700].forEach((p, i) => coin(m, i * 0.06, p, 0.07));
+    [1400, 1900].forEach((p, i) => tone(m, { freq: p, at: i * 0.07, decay: 0.12, gain: 0.06 }));
   },
   science: (m) => {
     [84, 88, 91, 96].forEach((n, i) => bell(m, n, i * 0.07, 0.04, 1.2));
@@ -335,7 +334,6 @@ const CUES: Record<Cue, (m: Mix) => void> = {
 const SAMPLES: Partial<Record<Cue, { urls: string[]; gain: number }>> = {
   click: { urls: [clickUrl], gain: 0.25 },
   melee: { urls: [attack1Url, attack2Url, attack3Url], gain: 0.45 },
-  coins: { urls: [goldUrl], gain: 0.35 },
   science: { urls: [scienceUrl], gain: 0.3 },
   culture: { urls: [cultureUrl], gain: 0.35 },
   sabotage: { urls: [sabotageUrl], gain: 0.45 },

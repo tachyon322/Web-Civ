@@ -1125,3 +1125,131 @@ button.link:hover:not(:disabled) {
   justify-content: flex-end;
   margin-top: 14px;
 }
+
+/* Окно «Пути»: вкладки и карточки */
+.paths .diplo-head .purse {
+  margin-left: auto;
+  margin-right: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.paths .tabs {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 12px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.paths .tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 8px 14px;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.paths .tab:hover {
+  color: var(--text);
+}
+
+.paths .tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.paths .tab-body {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.paths .intro {
+  margin-bottom: 12px;
+  line-height: 1.45;
+}
+
+.paths .grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.paths .card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.paths .card h3 {
+  margin: 0 0 4px;
+}
+
+.paths .card .hint {
+  margin-bottom: 6px;
+}
+
+.paths .facts {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  line-height: 1.6;
+}
+
+.paths .ability {
+  grid-template-columns: 1fr auto;
+  padding: 8px 0;
+}
+
+.paths .ability:last-child {
+  border-bottom: none;
+}
+
+.paths .ability .cost {
+  margin-left: 6px;
+  color: var(--muted);
+}
+
+.paths .ability .a-act {
+  text-align: right;
+  max-width: 150px;
+}
+
+.paths .ability .where {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.paths .pips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0 8px;
+}
+
+.paths .pips i {
+  width: 22px;
+  height: 8px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.paths .pips i.on {
+  background: var(--accent);
+}
+
+.paths .pips span {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .paths .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
