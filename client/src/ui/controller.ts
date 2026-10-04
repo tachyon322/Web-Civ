@@ -80,11 +80,13 @@ import {
   type Unit,
 } from '../core';
 import { BotRunner } from '../ai/client';
+import { audio } from '../audio';
 import { buildingDef, specialYields, unitDef } from '../core/data';
 import { computeVisible } from '../core/visibility';
 import { EMPTY_OVERLAY, type MapRenderer, type Overlay } from '../render/MapRenderer';
 import type { Minimap } from '../render/minimap';
 import { esc, showChoice } from './dialog';
+import { commandSound } from './sounds';
 import { escIcons, icon } from './icons';
 import { PathsWindow } from './paths';
 import { DiplomacyWindow, statusText } from './diplomacy';
@@ -244,11 +246,15 @@ export class GameController {
 
   private dispatch(cmd: Command): boolean {
     if (this.busy) return false;
+    const me = this.state.powers[this.power];
+    const before = { gold: me.gold, science: me.science, culture: me.culture };
     const result = execute(this.state, cmd);
     if (!result.ok) {
       this.toast(result.reason);
       return false;
     }
+    const sound = commandSound(cmd, before, me);
+    if (sound) audio.play(sound);
     const sel = this.selection;
     if (sel?.kind === 'unit' && !findUnit(this.state, sel.id)) this.selection = null;
     this.refresh();

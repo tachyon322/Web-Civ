@@ -1,4 +1,5 @@
 import './ui/styles.css';
+import { audio } from './audio';
 import { newGame, type GameState } from './core';
 import { loadIdentity, apiLogin, sendEvent } from './net/analytics';
 import { MapRenderer } from './render/MapRenderer';
@@ -30,6 +31,8 @@ async function main(): Promise<void> {
   const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
   let settings = loadSettings();
+  audio.setVolumes(settings.musicVolume, settings.sfxVolume);
+  audio.install();
   const renderer = await MapRenderer.create(el('map'));
   renderer.setSimpleGraphics(settings.simpleGraphics);
   const minimap = new Minimap(el<HTMLCanvasElement>('minimap'), renderer);
@@ -91,6 +94,7 @@ async function main(): Promise<void> {
       settings = next;
       saveSettings(next);
       renderer.setSimpleGraphics(next.simpleGraphics);
+      audio.setVolumes(next.musicVolume, next.sfxVolume);
     },
     notify: (text) => controller.notify(text),
   };

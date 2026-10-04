@@ -871,6 +871,27 @@ button.link:hover:not(:disabled) {
   width: auto;
 }
 
+.modal label.volume {
+  display: grid;
+  grid-template-columns: 70px 1fr 40px;
+  gap: 8px;
+  align-items: center;
+  color: var(--text);
+  margin: 8px 0 4px;
+}
+
+.modal label.volume input {
+  width: 100%;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.modal label.volume output {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .modal.login a {
   color: var(--science);
 }

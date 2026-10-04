@@ -1,6 +1,7 @@
 // Вход, главное меню и меню партии: продолжить, новая партия, сохранить и загрузить (слоты,
 // экспорт и импорт файла), настройки.
 
+import { audio } from '../audio';
 import { nationDef, type GameState } from '../core';
 import { apiLogin, loginProblem, saveIdentity, type Identity } from '../net/analytics';
 import { SaveError, readSaveFile, writeSaveFile, type SaveMeta } from '../save/format';
@@ -129,7 +130,7 @@ export function showMainMenu(host: MenuHost, inGame: boolean): void {
         <button data-action="new"><b>Новая партия</b><span>нация, число держав, сложность, сид карты</span></button>
         ${inGame && current ? '<button data-action="save"><b>Сохранить</b><span>в слот или в файл</span></button>' : ''}
         <button data-action="load"><b>Загрузить</b><span>из слота или из файла</span></button>
-        <button data-action="settings"><b>Настройки</b><span>простая графика</span></button>
+        <button data-action="settings"><b>Настройки</b><span>графика, музыка и звуки</span></button>
       </div>
       ${host.saves.available ? '' : '<div class="reason">Браузер не даёт сохранять данные на этом сайте — сохранения недоступны.</div>'}
       <div class="credits">Иконки: <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a> (CC BY 3.0)</div>
@@ -277,11 +278,15 @@ export function showLoadDialog(host: MenuHost, onLoaded: () => void): void {
 
 export function showSettingsDialog(host: MenuHost): void {
   const s = host.settings();
+  const pct = (v: number) => Math.round(v * 100);
   const modal = openModal(
     `<div class="panel modal menu">
       <h1>Настройки</h1>
       <label class="check"><input type="checkbox" id="simple" ${s.simpleGraphics ? 'checked' : ''} />
         Простая графика <span class="muted small">— плоские гексы без граней, теней и объёма; легче для слабых компьютеров</span></label>
+      <label class="volume">Музыка <input type="range" id="music" min="0" max="100" step="5" value="${pct(s.musicVolume)}" /><output>${pct(s.musicVolume)}%</output></label>
+      ${audio.hasMusic ? '' : '<div class="muted small">Файлы музыки не найдены — положите их в client/src/assets/music</div>'}
+      <label class="volume">Звуки <input type="range" id="sfx" min="0" max="100" step="5" value="${pct(s.sfxVolume)}" /><output>${pct(s.sfxVolume)}%</output></label>
       <button class="start secondary" data-action="close">Закрыть</button>
     </div>`,
     (action, _el, m) => {
@@ -291,4 +296,15 @@ export function showSettingsDialog(host: MenuHost): void {
   modal.root.querySelector<HTMLInputElement>('#simple')!.addEventListener('change', (e) => {
     host.applySettings({ ...host.settings(), simpleGraphics: (e.target as HTMLInputElement).checked });
   });
+  const slider = (id: string, key: 'musicVolume' | 'sfxVolume') => {
+    const input = modal.root.querySelector<HTMLInputElement>(`#${id}`)!;
+    input.addEventListener('input', () => {
+      input.nextElementSibling!.textContent = `${input.value}%`;
+      host.applySettings({ ...host.settings(), [key]: Number(input.value) / 100 });
+    });
+    return input;
+  };
+  slider('music', 'musicVolume');
+  // Пробный звук, чтобы было слышно выбранную громкость.
+  slider('sfx', 'sfxVolume').addEventListener('change', () => audio.play('gold'));
 }
