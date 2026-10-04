@@ -59,14 +59,23 @@ export function cityTiles(state: GameState, cityId: number): number[] {
   return result;
 }
 
-export function cityTileCountAll(state: GameState): Map<number, number> {
-  const counts = new Map<number, number>();
-  for (const c of state.territory.city) if (c !== NONE) counts.set(c, (counts.get(c) ?? 0) + 1);
-  return counts;
-}
-
+/** Вклад города в лимит земли державы (по уровню и черте нации). */
 export function cityTileLimit(state: GameState, city: City): number {
   return balance.city.tileLimit[city.level - 1] + (nationTrait(state, city.owner).tileLimit ?? 0);
+}
+
+/** Лимит земли державы: сумма вкладов всех её городов. */
+export function landLimit(state: GameState, power: number): number {
+  let sum = 0;
+  for (const c of state.cities) if (c.owner === power) sum += cityTileLimit(state, c);
+  return sum;
+}
+
+/** Сколько клеток у державы (территория — только суша). */
+export function landTiles(state: GameState, power: number): number {
+  let n = 0;
+  for (const o of state.territory.owner) if (o === power) n++;
+  return n;
 }
 
 export function citySlots(city: City): number {

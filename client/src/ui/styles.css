@@ -117,6 +117,10 @@ button .price .icon {
   color: var(--culture);
 }
 
+#topbar .res.full b {
+  color: #ffb36b;
+}
+
 #topbar .delta {
   color: var(--muted);
   margin-left: 2px;

@@ -7,7 +7,7 @@ import { distance, neighbors, range } from '../core/hex';
 import { canStop } from '../core/pathfinding';
 import { isLand, mapSize, terrainMoveCost } from '../core/state';
 import { freeCities } from '../core/stability';
-import { checkClaim } from '../core/territory';
+import { landLeft } from '../core/territory';
 import { NONE, S_NONE, type MilitaryType, type Unit } from '../core/types';
 import {
   exec,
@@ -75,17 +75,16 @@ export function settlersAllowed(ctx: BotContext, sites: Site[]): number {
   return affordable ? Math.max(1, Math.round((1 + Math.floor(myCities(ctx).length / 3)) * ctx.character.expansion)) : 0;
 }
 
-/** Клетки, которые можно разметить прямо сейчас (граничат с территорией, у города есть лимит). */
+/** Клетки, которые можно разметить прямо сейчас (граничат с территорией, у державы есть лимит земли). */
 export function claimableTiles(ctx: BotContext): number[] {
   const { state, power } = ctx;
+  if (landLeft(state, power) <= 0) return [];
   const size = mapSize(state);
   const { owner } = state.territory;
   const result = new Set<number>();
   for (let t = 0; t < owner.length; t++) {
     if (owner[t] !== power) continue;
-    for (const n of neighbors(size, t)) {
-      if (owner[n] === NONE && isLand(state, n) && !result.has(n) && checkClaim(state, power, n).ok) result.add(n);
-    }
+    for (const n of neighbors(size, t)) if (owner[n] === NONE && isLand(state, n)) result.add(n);
   }
   return [...result];
 }

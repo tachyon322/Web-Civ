@@ -63,17 +63,23 @@ export interface Overlay {
   captureTiles: number[];
   /** Свои юниты, с которыми можно слиться. */
   mergeTiles: number[];
+  /** Клетки, которые выбранный житель разметит, если войдёт. */
+  claimTiles: number[];
 }
 
-export const EMPTY_OVERLAY: Overlay = {
-  selectedTile: NONE,
-  reachable: null,
-  path: null,
-  networkTiles: [],
-  attackTiles: [],
-  captureTiles: [],
-  mergeTiles: [],
-};
+/** Пустая подсветка — каждый раз новая, чтобы массивы не копились между выделениями. */
+export function emptyOverlay(): Overlay {
+  return {
+    selectedTile: NONE,
+    reachable: null,
+    path: null,
+    networkTiles: [],
+    attackTiles: [],
+    captureTiles: [],
+    mergeTiles: [],
+    claimTiles: [],
+  };
+}
 
 interface Chunk {
   tiles: number[];
@@ -217,7 +223,7 @@ export class MapRenderer {
   private chunks: Chunk[] = [];
   private cityViews = new Map<number, CityView>();
   private visible: Uint8Array = new Uint8Array(0);
-  private overlay: Overlay = EMPTY_OVERLAY;
+  private overlay: Overlay = emptyOverlay();
   private renderQueued = false;
   /** «Простая графика»: плоские гексы без граней, теней и объёмных деталей. */
   private simple = false;
@@ -301,7 +307,7 @@ export class MapRenderer {
       }
     }
     this.drawSpecials();
-    this.overlay = EMPTY_OVERLAY;
+    this.overlay = emptyOverlay();
     this.refresh(state);
   }
 
@@ -862,6 +868,10 @@ export class MapRenderer {
         const { x, y } = tileCenter(this.size, t);
         reach.poly(hexCorners(x, y, 0.9)).fill({ color: palette.reach, alpha: 0.16 });
       }
+    }
+    for (const t of o.claimTiles) {
+      const { x, y } = tileCenter(this.size, t);
+      reach.poly(hexCorners(x, y, 0.8)).fill({ color: palette.claim, alpha: 0.3 }).stroke({ width: 2, color: palette.claim, alpha: 0.8 });
     }
     const ring = (tiles: number[], color: number) => {
       for (const t of tiles) {

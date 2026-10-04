@@ -21,6 +21,10 @@ import {
   cityStrength,
   cityStrengthParts,
   cityTileLimit,
+  landLeft,
+  landLimit,
+  landTiles,
+  bordersTerritory,
   cityTiles,
   characterDef,
   checkClaim,
@@ -82,7 +86,7 @@ import {
 import { BotRunner } from '../ai/client';
 import { buildingDef, specialYields, unitDef } from '../core/data';
 import { computeVisible } from '../core/visibility';
-import { EMPTY_OVERLAY, type MapRenderer, type Overlay } from '../render/MapRenderer';
+import { emptyOverlay, type MapRenderer, type Overlay } from '../render/MapRenderer';
 import type { Minimap } from '../render/minimap';
 import { esc, showChoice } from './dialog';
 import { escIcons, icon } from './icons';
@@ -381,8 +385,20 @@ export class GameController {
       case 'merge':
         this.openMergeDialog(unit, intent.target);
         return;
-      case 'move':
-        this.dispatch({ type: 'Move', power: this.power, unitId: unit.id, target: tile });
+      case 'move': {
+        const path = unit.type === 'citizen' ? findPath(this.state, unit, tile) : null;
+        if (this.dispatch({ type: 'Move', power: this.power, unitId: unit.id, target: tile }) && path) this.explainMissedClaims(path);
+      }
+    }
+  }
+
+  /** Житель прошёл нейтральную землю у границы, но не разметил её из-за лимита — говорим сразу. */
+  private explainMissedClaims(path: number[]): void {
+    const state = this.state;
+    if (landLeft(state, this.power) > 0) return;
+    const missed = path.some((t) => state.territory.owner[t] === NONE && isLand(state, t) && bordersTerritory(state, this.power, t));
+    if (missed) {
+      this.toast(`Земля не размечена: лимит державы исчерпан (${landTiles(state, this.power)} / ${landLimit(state, this.power)}). Лимит растёт вместе с городами.`);
     }
   }
 
@@ -592,12 +608,16 @@ export class GameController {
 
   private updateOverlay(): void {
     const state = this.state;
-    const overlay: Overlay = { ...EMPTY_OVERLAY };
+    const overlay: Overlay = emptyOverlay();
     const unit = this.selectedUnit();
     const sel = this.selection;
     if (unit) {
       overlay.selectedTile = unit.tile;
-      overlay.reachable = reachableTiles(state, unit).keys();
+      const reach = reachableTiles(state, unit);
+      overlay.reachable = reach.keys();
+      if (unit.type === 'citizen' && landLeft(state, this.power) > 0) {
+        overlay.claimTiles = [...reach.keys()].filter((t) => checkClaim(state, this.power, t).ok);
+      }
       overlay.networkTiles = this.networkCityTiles(unit.tile);
       const range = unitDef(unit.type).range;
       for (const other of state.units) {
@@ -701,6 +721,7 @@ export class GameController {
     const epoch = epochOf(p);
     const next = nextEpochScience(p);
     const epochTitle = `Эпоха: ${epochName(epoch)}\nЗаработано науки: ${p.scienceTotal}${next ? `\nСледующая эпоха — ${epochName(epoch + 1)} при ${next}` : '\nПоследняя эпоха'}`;
+    const landTitle = `Земля державы: ${landTiles(state, this.power)} клеток из лимита ${landLimit(state, this.power)}\nКаждая клетка: +1 золото и +1 к росту города.\nЛимит — сумма по городам (уровень 1–5: 7 / 10 / 13 / 16 / 19), растёт вместе с городами.\nЖитель размечает нейтральную сушу у границы, пока лимит не исчерпан.`;
     const stab = computeStability(state, this.power);
     const level = stabilityLevel(p.stability);
     const stabilityTitle = `Стабильность: ${p.stability} — ${level.name}\n\n${stab.items.map((i) => `${i.label}: ${signed(i.value)}`).join('\n')}\n\nПодробнее — в окне «Пути» (P)`;
@@ -709,6 +730,7 @@ export class GameController {
       ${res('gold', p.gold)}
       ${res('science', p.science)}
       ${res('culture', p.culture)}
+      <span class="res ${landTiles(state, this.power) >= landLimit(state, this.power) ? 'full' : ''}" title="${esc(landTitle)}">${icon('land')} <b>${landTiles(state, this.power)}</b><span class="delta">/ ${landLimit(state, this.power)}</span></span>
       <span class="res" title="${esc(epochTitle)}">${icon('epoch')} <b>${esc(epochName(epoch))}</b></span>
       <span class="res stability ${level.combat !== 1 ? 'bad' : ''}" title="${esc(stabilityTitle)}">${icon('stability')} <b>${p.stability}</b> ${esc(level.name.toLowerCase())}</span>
       <span class="res" title="${esc(deterrenceTitle('Индекс сдерживания: насколько дорого на вас напасть. Боты нападают, если их армия сильнее.', deterrence))}">${icon('deterrence')} <b>${fmt(deterrence.total)}</b></span>
@@ -818,7 +840,12 @@ export class GameController {
     if (unit.routeTarget !== NONE) html += `<button data-action="cancel-route">Отменить маршрут</button>`;
     if (city && city.owner === this.power) html += `<button data-action="select-city">Открыть город ${esc(city.name)}</button>`;
     html += `</div><div class="note">ПКМ по клетке — идти (дальние цели — маршрутом).`;
-    if (unit.type === 'citizen') html += ` Проходя нейтральную клетку у границы, житель размечает её для ближайшего города со свободным лимитом.`;
+    if (unit.type === 'citizen') {
+      const left = landLeft(state, this.power);
+      html += left > 0
+        ? ` Проходя нейтральную сушу у границы (зелёные клетки), житель делает её своей — ещё ${left} кл. до лимита земли державы.`
+        : ` Лимит земли державы исчерпан — житель ничего не разметит, пока не вырастут города.`;
+    }
     if (unit.level < balance.units.maxLevel) html += ` Фиолетовая рамка — слияние с соседом того же уровня.`;
     if (unitDef(unit.type).military || unit.type === 'citizen') html += ` Красная — цель атаки, оранжевая — город можно захватить.`;
     if (this.networkCityTiles(unit.tile).length) {
@@ -874,7 +901,7 @@ export class GameController {
       html += `<div class="row"><span>Рост</span><span>максимальный уровень</span></div>`;
     }
     const tiles = cityTiles(state, city.id).length;
-    html += `<div class="row"><span>Клетки</span><span>${tiles} / ${cityTileLimit(state, city)}</span></div>
+    html += `<div class="row"><span title="Клетки, привязанные к городу: +1 к росту каждая">Клетки</span><span title="Вклад города в лимит земли державы">${tiles} · лимиту +${cityTileLimit(state, city)}</span></div>
       <div class="row"><span>Слоты зданий</span><span>${city.buildings.length} / ${citySlots(city)}</span></div>`;
     const inc = this.cityIncome(city);
     html += `<div class="row"><span>Даёт за ход</span><span>${icon('gold')} ${inc.gold} · ${icon('science')} ${inc.science} · ${icon('culture')} ${inc.culture}</span></div>`;
