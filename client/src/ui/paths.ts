@@ -29,6 +29,7 @@ import {
 } from '../core';
 import { esc } from './dialog';
 import { icon } from './icons';
+import { flagFor } from './flags';
 
 export interface PathsHost {
   readonly state: GameState;
@@ -209,7 +210,7 @@ export class PathsWindow {
     const rows = known
       .map((p) => {
         const v = victoryProgress(state, p.id);
-        return `<tr><td><span class="swatch" style="background:${p.color}"></span>${esc(p.name)}</td>
+        return `<tr><td>${flagFor(p.nationId, p.color)}${esc(p.name)}</td>
           <td>${v.capitals}/${v.capitalsNeeded}</td>
           <td>${Math.round(v.federation * 100)}%${v.vassals ? ` (вассалов ${v.vassals})` : ''}</td>
           <td>${v.science}/${PROJECT_STAGES}</td><td>${v.culture}/${PROJECT_STAGES}</td></tr>`;

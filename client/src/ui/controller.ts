@@ -106,6 +106,7 @@ import { spentCue, type Purse } from './sounds';
 import type { Cue } from '../audio/sfx';
 import { PathsWindow } from './paths';
 import { DiplomacyWindow, statusText } from './diplomacy';
+import { flagFor } from './flags';
 
 type Selection = { kind: 'unit'; id: number } | { kind: 'city'; id: number } | null;
 
@@ -855,7 +856,7 @@ export class GameController {
     const level = stabilityLevel(p.stability);
     const stabilityTitle = `Стабильность: ${p.stability} — ${level.name}\n\n${stab.items.map((i) => `${i.label}: ${signed(i.value)}`).join('\n')}\n\nПодробнее — в окне «Пути» (P)`;
     this.ui.topbar.innerHTML = `
-      <span class="power"><span class="swatch" style="background:${p.color}"></span>${esc(p.name)}</span>
+      <span class="power">${flagFor(p.nationId, p.color)}${esc(p.name)}</span>
       ${res('gold', p.gold)}
       ${res('science', p.science)}
       ${res('culture', p.culture)}
